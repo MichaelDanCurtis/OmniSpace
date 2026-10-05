@@ -5,6 +5,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Pawn.h"
+#include "Data/StarSystemData.h"
 #include "ShipPawn.generated.h"
 
 class UCameraComponent;
