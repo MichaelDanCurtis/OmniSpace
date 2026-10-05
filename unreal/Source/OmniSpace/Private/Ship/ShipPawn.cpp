@@ -198,6 +198,7 @@ bool AShipPawn::IsMassLocked() const
 void AShipPawn::SetTarget(const FString& Id)
 {
 	TargetId = Id;
+	if (!Id.IsEmpty()) JumpTargetId.Empty();
 	if (!Id.IsEmpty()) Msg(FString::Printf(TEXT("Target: %s"), *Id));
 }
 
@@ -377,6 +378,7 @@ void AShipPawn::CycleJumpTarget()
 	const FStarDescriptor& Next = Near[(I + 1) % Near.Num()];
 	JumpTargetId = Next.Id;
 	JumpTarget = Next;
+	TargetId.Empty(); // navigation is one thing at a time: a jump destination or a local target
 	Msg(FString::Printf(TEXT("Jump target: %s  %.1f ly  (%s)"), *Next.Name, FVector::Dist(Next.Pos, Cur.Pos), *UGalaxySubsystem::ClassLabel(Next.Cls)));
 	GM->PrefetchJump(Next); // start the Forge early so the jump is quick
 }
