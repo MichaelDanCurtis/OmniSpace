@@ -417,11 +417,15 @@ return col;
     for n, nm in ((color, "Color"), (windows, "Windows"), (winc, "WindowColor"), (spin, "Spin"), (panel, "PanelM"), (seed, "Seed")):
         MEL.connect_material_expressions(n, "", node, nm)
     MEL.connect_material_property(node, "", unreal.MaterialProperty.MP_BASE_COLOR)
-    MEL.connect_material_property(node, "Roughness", unreal.MaterialProperty.MP_ROUGHNESS)
     MEL.connect_material_property(node, "Emissive", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
-    metal = MEL.create_material_expression(mat, unreal.MaterialExpressionConstant, -300, 400)
-    metal.set_editor_property("r", 0.55)
+    # per-instance metal / extra roughness (cockpit interiors are matte so they don't mirror the sky)
+    metal = scalar_param(mat, "Metal", 0.55, -300, 400)
     MEL.connect_material_property(metal, "", unreal.MaterialProperty.MP_METALLIC)
+    radd = scalar_param(mat, "RoughAdd", 0.0, -300, 500)
+    rsum = MEL.create_material_expression(mat, unreal.MaterialExpressionAdd, 0, 450)
+    MEL.connect_material_expressions(node, "Roughness", rsum, "A")
+    MEL.connect_material_expressions(radd, "", rsum, "B")
+    MEL.connect_material_property(rsum, "", unreal.MaterialProperty.MP_ROUGHNESS)
 
 
 def build_emissive(mat):

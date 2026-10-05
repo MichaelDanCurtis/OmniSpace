@@ -26,6 +26,8 @@ namespace
 			MID->SetVectorParameterValue(TEXT("EmissiveColor"), Color);
 			MID->SetScalarParameterValue(TEXT("PanelM"), PanelM);
 			MID->SetScalarParameterValue(TEXT("Windows"), 0.f);
+			MID->SetScalarParameterValue(TEXT("Metal"), 0.05f);   // matte interior: no sky mirrored in the dash
+			MID->SetScalarParameterValue(TEXT("RoughAdd"), 0.3f);
 		}
 		C->RegisterComponent();
 		return C;
@@ -100,9 +102,21 @@ void OmniCockpit::Build(AActor* Owner, USceneComponent* Parent)
 	UPointLightComponent* L = NewObject<UPointLightComponent>(Owner);
 	L->SetupAttachment(Parent);
 	L->SetRelativeLocation(FVector(40, 0, 60));
-	L->SetIntensity(120.f);
+	L->SetIntensityUnits(ELightUnits::Candelas);
+	L->SetIntensity(6.f); // ~4 lux on the dash: readable, well below the 8 lux sun
 	L->SetLightColor(FLinearColor(0.75f, 0.85f, 1.f));
 	L->SetAttenuationRadius(400.f);
+	// a second warm light low in the dash so the consoles glow
+	UPointLightComponent* L2 = NewObject<UPointLightComponent>(Owner);
+	L2->SetupAttachment(Parent);
+	L2->SetRelativeLocation(FVector(110, 0, -20));
+	L2->SetIntensityUnits(ELightUnits::Candelas);
+	L2->SetIntensity(2.5f);
+	L2->SetLightColor(FLinearColor(1.f, 0.75f, 0.45f));
+	L2->SetAttenuationRadius(250.f);
+	L2->SetCastShadows(false);
+	L2->SetMobility(EComponentMobility::Movable);
+	L2->RegisterComponent();
 	L->SetCastShadows(false);
 	L->SetMobility(EComponentMobility::Movable);
 	L->RegisterComponent();
