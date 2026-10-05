@@ -9,3 +9,4 @@ __pycache__/
 .DS_Store
 client/node_modules/
 .omnispace-*.tar.gz
+.shots/
