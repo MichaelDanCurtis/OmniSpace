@@ -11,6 +11,7 @@ import { StationMenu } from './ui/StationMenu'
 import { Hyperspace } from './ui/Hyperspace'
 import { Overlays } from './ui/Overlays'
 import { Logo } from './ui/Logo'
+import { ForgePanel } from './ui/ForgePanel'
 
 export default function App() {
   const canvas = useRef<HTMLCanvasElement>(null)
@@ -51,7 +52,6 @@ export default function App() {
 }
 
 function TitleScreen({ game, ready }: { game: Game | null; ready: boolean }) {
-  const forge = useHud((s) => s.forge)
   const existing = loadSave()
   const [name, setName] = useState(existing?.commander && existing.commander !== 'Commander' ? existing.commander : '')
   const start = (fresh: boolean) => {
@@ -88,16 +88,7 @@ function TitleScreen({ game, ready }: { game: Game | null; ready: boolean }) {
           New Game
         </button>
       </div>
-      <div className={`forge-status ${forge.ai ? 'ai' : forge.online ? '' : 'off'}`}>
-        <i />
-        <span>
-          {forge.ai
-            ? `STELLAR FORGE ONLINE · AI model: ${forge.model ?? 'default'} · new systems are created live by the agent`
-            : forge.online
-              ? `Stellar Forge server online · ${forge.reason ?? 'AI disabled'}`
-              : 'Stellar Forge offline · onboard procedural generator active'}
-        </span>
-      </div>
+      <ForgePanel />
       <div className="title-hint">Click the view to fly with the mouse · F1 controls · M galaxy map · N system map</div>
     </div>
   )

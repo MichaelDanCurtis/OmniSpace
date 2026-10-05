@@ -6,10 +6,10 @@ import logging
 import os
 import time
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any, Awaitable, Callable, Optional
 
 from .draft import SystemDraft
-from .forge import forge_system, model_name
+from .forge import ForgeRuntime, forge_system, model_name
 from .schema import GenerateRequest
 from .store import Store
 
@@ -36,10 +36,12 @@ class Job:
 
 
 class JobManager:
-    def __init__(self, store: Store, model_override: Any = None, max_concurrent: int = 3):
+    def __init__(self, store: Store, model_override: Any = None, max_concurrent: int = 3,
+                 runtime_factory: Optional[Callable[[], Awaitable[ForgeRuntime]]] = None):
         self.store = store
         self.jobs: dict[str, Job] = {}
         self.model_override = model_override
+        self.runtime_factory = runtime_factory
         self.sem = asyncio.Semaphore(max_concurrent)
         self.timeout = float(os.environ.get("OMNISPACE_TIMEOUT", "240"))
 
@@ -82,9 +84,13 @@ class JobManager:
         assert job.draft is not None
         try:
             async with self.sem:
-                job.draft.log.append("Hyperspace cartography uplink established")
-                await forge_system(job.draft, model=self.model_override, timeout=self.timeout)
-            system = job.draft.build(self.model_label())
+                if self.runtime_factory is not None:
+                    runtime = await self.runtime_factory()
+                else:
+                    runtime = ForgeRuntime(model=self.model_override, label=self.model_label())
+                job.draft.log.append(f"Hyperspace cartography uplink established · {runtime.label}")
+                await forge_system(job.draft, timeout=self.timeout, runtime=runtime)
+            system = job.draft.build(runtime.label)
             self.store.put(system)
             job.status = "ready"
         except Exception as e:  # noqa: BLE001 - report every failure to the client

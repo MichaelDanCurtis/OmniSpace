@@ -11,6 +11,11 @@ export interface ForgeStatus {
   ai: boolean
   model?: string
   reason?: string
+  auth?: 'api_key' | 'chatgpt' | 'scripted'
+  account?: string | null
+  signedIn?: boolean
+  canSignIn?: boolean
+  sharing?: boolean
 }
 
 export interface ChartedSummary {
@@ -44,12 +49,30 @@ async function fetchJson<T>(url: string, init?: RequestInit, timeoutMs = 8000): 
 
 export async function checkForge(): Promise<ForgeStatus> {
   try {
-    const h = await fetchJson<{ ok: boolean; ai: { enabled: boolean; model?: string; reason?: string } }>(`${API}/health`, undefined, 2500)
-    status = { online: true, ai: h.ai.enabled, model: h.ai.model, reason: h.ai.reason }
+    type H = { enabled: boolean; model?: string; reason?: string; auth?: ForgeStatus['auth']; account?: string | null; signed_in?: boolean; can_sign_in?: boolean; sharing?: boolean }
+    const h = await fetchJson<{ ok: boolean; ai: H }>(`${API}/health`, undefined, 2500)
+    status = { online: true, ai: h.ai.enabled, model: h.ai.model, reason: h.ai.reason, auth: h.ai.auth, account: h.ai.account, signedIn: h.ai.signed_in, canSignIn: h.ai.can_sign_in, sharing: h.ai.sharing }
   } catch {
     status = { online: false, ai: false, reason: 'Stellar Forge server offline — onboard procedural generator active' }
   }
   return status
+}
+
+export async function chatgptSignIn(): Promise<string> {
+  const r = await fetchJson<{ url: string }>(`${API}/auth/chatgpt/start`, undefined, 10000)
+  return r.url
+}
+
+export async function chatgptSignOut() {
+  await fetchJson(`${API}/auth/chatgpt/logout`, { method: 'POST' })
+}
+
+export async function chatgptModels(): Promise<{ models: { slug: string; name: string }[]; selected?: string | null }> {
+  return fetchJson(`${API}/auth/chatgpt/models`, undefined, 10000)
+}
+
+export async function chatgptSetModel(slug: string) {
+  await fetchJson(`${API}/auth/chatgpt/model`, { method: 'POST', body: JSON.stringify({ slug }) })
 }
 
 export function forgeStatus() {
@@ -79,6 +102,7 @@ async function lockIn(sys: StarSystem) {
 }
 
 const pending = new Map<string, Promise<StarSystem>>()
+export let lastForgeError: string | null = null
 
 /**
  * Load (or create) a star system. `onLog` receives Stellar Forge telemetry
@@ -109,7 +133,8 @@ export function loadSystem(star: StarDescriptor, commander: string, onLog?: (lin
         await new Promise((res) => setTimeout(res, 650))
         r = await fetchJson<Resp>(`${API}/systems/${encodeURIComponent(star.id)}/job`)
       }
-      onLog?.(r.log ?? [])
+      onLog?.(r.status === 'failed' && r.error ? [...(r.log ?? []), `Forge error: ${r.error}`] : r.log ?? [])
+      if (r.status === 'failed' && r.error) lastForgeError = r.error
       if (r.status === 'ready' && r.system) {
         memCache.set(star.id, r.system)
         return r.system

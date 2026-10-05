@@ -2,6 +2,7 @@
 // ~15x per second; React renders it.
 
 import { create } from 'zustand'
+import type { ForgeStatus } from './api'
 import type { Mission } from './economy'
 import type { DataEntry } from './player'
 import type { NavObject, StarSystem } from './types'
@@ -68,7 +69,7 @@ export interface HudState {
   rects: Record<string, Rect>
   data: DataEntry[]
   missions: Mission[]
-  forge: { online: boolean; ai: boolean; model?: string; reason?: string }
+  forge: ForgeStatus
   jumpRange: number
   alert: string | null
   markers: { id: string; name: string; kind: string; sx: number; sy: number; dist: string }[]

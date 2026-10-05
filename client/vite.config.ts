@@ -7,7 +7,11 @@ export default defineConfig({
   base: './',
   server: {
     port: 5173,
-    proxy: { '/api': 'http://127.0.0.1:8000' },
+    proxy: { '/api': 'http://127.0.0.1:8000', '/auth': 'http://127.0.0.1:8000' },
   },
-  build: { chunkSizeWarningLimit: 2000 },
+  build: {
+    chunkSizeWarningLimit: 2000,
+    // stable file names so rebuilt copies overwrite in place
+    rollupOptions: { output: { entryFileNames: 'assets/omnispace.js', chunkFileNames: 'assets/[name].js', assetFileNames: 'assets/[name][extname]' } },
+  },
 })

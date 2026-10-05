@@ -6,7 +6,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
-import { checkForge, loadSystem, prefetchSystem, cachedSystem } from './api'
+import { checkForge, loadSystem, prefetchSystem, cachedSystem, lastForgeError } from './api'
 import { audio } from './audio'
 import { market, missionBoard, SCAN_VALUE, type Mission } from './economy'
 import { CLASS_LABEL, distLy, getStar, HOME_ID, HOME_STAR, plotRoute, SCOOPABLE, starsNear } from './galaxy'
@@ -1172,6 +1172,7 @@ export class Game {
         if (!this.player.route.length) this.hyperTarget = null
         if (this.player.tutorial === 1) this.player.tutorial = 2
         this.enterSystem(sys, 'jump')
+        if (h.ai && sys.source !== 'ai') this.msg(`Stellar Forge unavailable${lastForgeError ? `: ${lastForgeError}` : ''} — charted by onboard survey instead`, 'warn')
         audio.whoosh()
         this.save()
       }

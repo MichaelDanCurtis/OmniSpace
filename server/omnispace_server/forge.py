@@ -13,7 +13,7 @@ import os
 from dataclasses import dataclass
 from typing import Any, Literal, Optional
 
-from agents import Agent, ModelSettings, RunContextWrapper, Runner, function_tool
+from agents import Agent, ModelSettings, RunConfig, RunContextWrapper, Runner, function_tool, tool_namespace
 from agents.agent import ToolsToFinalOutputResult
 from agents.models.interface import Model
 from agents.tool import FunctionToolResult
@@ -252,17 +252,52 @@ def configure_openai() -> None:
 configure_openai()
 
 
-def build_agent(model: Optional[str | Model] = None) -> Agent[ForgeContext]:
-    m = model if model is not None else model_name()
+try:
+    from agents import OpenAIResponsesModel as _ORM
+
+    class ChatGPTPlanModel(_ORM):
+        """Responses model for the ChatGPT-plan route; `safe` drops optional extras."""
+
+        safe = False
+
+        def _supports_default_prompt_cache_key(self) -> bool:  # type: ignore[override]
+            return False if self.safe else super()._supports_default_prompt_cache_key()
+except Exception:  # pragma: no cover
+    ChatGPTPlanModel = None  # type: ignore[assignment,misc]
+
+
+@dataclass
+class ForgeRuntime:
+    """How to reach a model for one generation run."""
+
+    model: Optional[str | Model] = None
+    label: str = "sdk-default"
+    streamed: bool = False  # ChatGPT-plan route requires stream=true
+    stateless: bool = False  # ChatGPT-plan route requires store=false
+    namespace: bool = False  # ChatGPT-plan route wants function tools grouped in a namespace
+    include_reasoning: bool = True
+    safe_mode: bool = False  # strip item ids and drop reasoning replay (fallback for strict stateless routes)
+
+
+def build_agent(model: Optional[str | Model] = None, runtime: Optional[ForgeRuntime] = None) -> Agent[ForgeContext]:
+    rt = runtime or ForgeRuntime(model=model)
+    m = rt.model if rt.model is not None else model_name()
+    tools: list[Any] = list(TOOLS)
+    if rt.namespace:
+        tools = tool_namespace(name="stellar_forge", description="Tools that build the star system the pilot is jumping into.", tools=list(TOOLS))
     agent: Agent[ForgeContext] = Agent(
         name="Stellar Forge",
         instructions=directive(),
-        tools=list(TOOLS),
+        tools=tools,
         tool_use_behavior=_stop_when_finalized,
         **({"model": m} if m is not None else {}),
     )
-    # Keep the SDK's per-model defaults (e.g. GPT-5 reasoning settings) and layer ours on top.
-    agent.model_settings = agent.model_settings.resolve(ModelSettings(parallel_tool_calls=True))
+    if rt.stateless:
+        extra = ModelSettings(store=False, response_include=["reasoning.encrypted_content"] if rt.include_reasoning else None)
+        agent.model_settings = agent.model_settings.resolve(extra)
+    else:
+        # Keep the SDK's per-model defaults (e.g. GPT-5 reasoning settings) and layer ours on top.
+        agent.model_settings = agent.model_settings.resolve(ModelSettings(parallel_tool_calls=True))
     effort = os.environ.get("OMNISPACE_REASONING")
     if effort:
         from openai.types.shared.reasoning import Reasoning
@@ -271,16 +306,56 @@ def build_agent(model: Optional[str | Model] = None) -> Agent[ForgeContext]:
     return agent
 
 
-async def forge_system(draft: SystemDraft, model: Optional[str | Model] = None, timeout: float = 240.0, max_turns: int = 40) -> SystemDraft:
+def _strip_ids(data: Any) -> Any:
+    from agents.run_config import ModelInputData
+
+    items = []
+    for it in data.model_data.input:
+        if isinstance(it, dict):
+            if it.get("type") == "reasoning":
+                continue
+            it = {k: v for k, v in it.items() if k != "id"}
+        items.append(it)
+    return ModelInputData(input=items, instructions=data.model_data.instructions)
+
+
+async def _run(agent: Agent[ForgeContext], prompt: str, ctx: ForgeContext, rt: ForgeRuntime, max_turns: int) -> None:
+    run_config = None
+    if rt.stateless:
+        run_config = RunConfig(reasoning_item_id_policy="omit", call_model_input_filter=_strip_ids if rt.safe_mode else None)
+    if rt.streamed:
+        result = Runner.run_streamed(agent, prompt, context=ctx, max_turns=max_turns, run_config=run_config)
+        async for _ in result.stream_events():
+            pass
+    else:
+        await Runner.run(agent, prompt, context=ctx, max_turns=max_turns, run_config=run_config)
+
+
+async def forge_system(draft: SystemDraft, model: Optional[str | Model] = None, timeout: float = 240.0, max_turns: int = 40,
+                       runtime: Optional[ForgeRuntime] = None) -> SystemDraft:
     """Run the agent to completion against the given draft. Raises on failure."""
-    agent = build_agent(model)
+    rt = runtime or ForgeRuntime(model=model)
     prompt = (
         f"Build the star system '{draft.star.name}' (star id {draft.star.id}, class {draft.star.cls}) "
         f"for Commander {draft.commander}, who is arriving now. Survey, design, then finalize."
     )
     ctx = ForgeContext(draft=draft)
     try:
-        await asyncio.wait_for(Runner.run(agent, prompt, context=ctx, max_turns=max_turns), timeout=timeout)
+        try:
+            await asyncio.wait_for(_run(build_agent(runtime=rt), prompt, ctx, rt, max_turns), timeout=timeout)
+        except Exception as e:  # noqa: BLE001
+            # Stateless (ChatGPT plan) route rejected the request shape before anything was
+            # built: retry once in a conservative mode (no `include`, no item ids, no reasoning replay).
+            if rt.stateless and not rt.safe_mode and not draft.bodies and draft.profile is None and "400" in str(e):
+                log.warning("retrying forge in safe stateless mode: %s", e)
+                draft.log.append("Recalibrating uplink…")
+                rt.include_reasoning = False
+                rt.safe_mode = True
+                if hasattr(rt.model, "safe"):
+                    rt.model.safe = True  # type: ignore[union-attr]
+                await asyncio.wait_for(_run(build_agent(runtime=rt), prompt, ctx, rt, max_turns), timeout=timeout)
+            else:
+                raise
     except Exception as e:  # noqa: BLE001
         # Keep a usable partial system (e.g. the model ran out of turns or time after
         # building most of it); otherwise surface the failure.

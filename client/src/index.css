@@ -240,3 +240,7 @@ button { font-family: var(--font); }
   .map .side { width: 260px; }
   .brand-tags { display: none; }
 }
+
+.btn.chatgpt { background: #f4f6f8; color: #0d0f12; border-color: #f4f6f8; text-transform: none; letter-spacing: 0.02em; font-weight: 600; }
+.btn.chatgpt:hover:not(:disabled) { background: #ffffff; }
+.mini .forge-status { font-size: 10px; }

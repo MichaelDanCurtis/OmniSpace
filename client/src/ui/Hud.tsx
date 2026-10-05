@@ -3,6 +3,7 @@ import { audio } from '../game/audio'
 import type { Game } from '../game/engine'
 import { fmtDist, useHud, type HudState, type Rect } from '../game/hud'
 import { Logo } from './Logo'
+import { ForgePanel } from './ForgePanel'
 
 const KIND_ICON: Record<string, string> = { star: '✶', planet: '●', moon: '◦', station: '◆', poi: '✧', belt: '⁘' }
 
@@ -438,8 +439,8 @@ function SysInfo({ s, game }: { s: HudState; game: Game }) {
           </div>
         </>
       )}
-      <div>
-        <span className="k">Forge</span> {s.forge.ai ? `AI online · ${s.forge.model}` : s.forge.online ? 'server online · AI off' : 'offline'}
+      <div className="interactive" style={{ margin: '4px 0' }}>
+        <ForgePanel compact />
       </div>
       <div style={{ marginTop: 4, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         <button className="btn small" onClick={() => (game.input.invertY = !game.input.invertY)}>

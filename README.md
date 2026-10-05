@@ -23,16 +23,21 @@ cd "/Volumes/Main External/OmniSpace"
 
 `start.sh` creates a Python virtualenv, installs the server, creates `.env` from `.env.example` on first run, and opens <http://localhost:8000>. The game client is prebuilt in `client/dist`, so you don't need Node to play.
 
-**Turn on AI generation:** put your key in `.env`:
+**Turn on AI generation.** There are two ways:
 
-```
-OPENAI_API_KEY=sk-...
-OMNISPACE_MODEL=            # optional; blank = Agents SDK default model
-```
+1. **Sign in with ChatGPT (uses your ChatGPT Plus/Pro plan, no API key).** On the title screen, click **Sign in with ChatGPT**, approve OmniSpace in the browser tab that opens, then come back. This uses OpenAI's [Sign in with ChatGPT](https://developers.openai.com/siwc) for locally-run personal and open-source apps. The Stellar Forge calls the Responses API with your plan's OAuth token (`store=false`, streamed, tools grouped in a namespace, as that route requires). Tokens are kept in `data/chatgpt_auth.json` (mode 600) and refresh automatically. You can pick the model from your plan's catalog on the title screen or in the dashboard **SYS** tab.
+2. **OpenAI API key**, billed on platform.openai.com. Put it in `.env`:
 
-> The Agents SDK uses an **OpenAI Platform API key**, which is billed through platform.openai.com. A ChatGPT Plus/Pro subscription does not include API access.
+   ```
+   OPENAI_API_KEY=sk-...
+   OMNISPACE_MODEL=            # optional; blank = Agents SDK default model
+   ```
 
-If there's no key, the game still runs and every system comes from the onboard procedural generator. To try the full agent pipeline and hyperspace telemetry without any API calls, set `OMNISPACE_AI=scripted` in `.env`.
+If both are configured, the API key wins. Set `OMNISPACE_AUTH=chatgpt` to force the plan instead.
+
+> Sign in with ChatGPT is in preview. The ChatGPT-plan route is built to match OpenAI's published rules and is tested against a mock of the API, but it hasn't been run against a live plan yet. If a request is rejected, the forge retries once in a stricter mode. If that also fails, the game falls back to the procedural generator and the hyperspace log shows the error.
+
+With no AI configured, the game still runs and every system comes from the onboard procedural generator. To try the full agent pipeline and hyperspace telemetry without any calls to OpenAI, set `OMNISPACE_AI=scripted` in `.env`.
 
 Needs Python 3.10+ (`brew install python@3.12`). Node 20+ is only needed if you change the client.
 
@@ -76,8 +81,9 @@ server/
   omnispace_server/draft.py  SystemDraft: physics/canon validation behind every tool
   omnispace_server/bible.py  universe bible + agent directive (edit to change tone/canon)
   omnispace_server/main.py   FastAPI API + static hosting of client/dist
+  omnispace_server/chatgpt_auth.py  Sign in with ChatGPT (OAuth + PKCE, token refresh, model catalog)
   omnispace_server/scripted.py  offline stand-in model (tests / demo)
-  tests/                     pytest suite (draft rules, real SDK loop, API flow)
+  tests/                     pytest suite (draft rules, real SDK loop, API flow, ChatGPT-plan route + OAuth mocks)
 ```
 
 ## The Stellar Forge tool system
