@@ -120,6 +120,10 @@ void AShipPawn::SetupPlayerInputComponent(UInputComponent* IC)
 	IC->BindKey(EKeys::LeftMouseButton, IE_Pressed, this, &AShipPawn::OnMouseLock);
 	IC->BindKey(EKeys::P, IE_Pressed, this, &AShipPawn::OnToggleAutopilot);
 	IC->BindKey(EKeys::N, IE_Pressed, this, &AShipPawn::OnCycleJump);
+	IC->BindKey(EKeys::F5, IE_Pressed, this, &AShipPawn::OnDebugSky);
+	IC->BindKey(EKeys::F6, IE_Pressed, this, &AShipPawn::OnDebugStar);
+	IC->BindKey(EKeys::F7, IE_Pressed, this, &AShipPawn::OnDebugBodies);
+	IC->BindKey(EKeys::F8, IE_Pressed, this, &AShipPawn::OnDebugCockpit);
 	IC->BindKey(EKeys::H, IE_Pressed, this, &AShipPawn::OnEngageJump);
 }
 
@@ -346,6 +350,18 @@ bool AShipPawn::AutopilotControls(FApControls& Out)
 	Out.bEngageSC = bEngageSC;
 	Out.bDropSC = bDropSC;
 	return true;
+}
+
+void AShipPawn::OnDebugSky() { if (Director) Director->DebugToggle(0); }
+void AShipPawn::OnDebugStar() { if (Director) Director->DebugToggle(1); }
+void AShipPawn::OnDebugBodies() { if (Director) Director->DebugToggle(2); }
+void AShipPawn::OnDebugCockpit()
+{
+	TArray<USceneComponent*> Kids;
+	Root->GetChildrenComponents(true, Kids);
+	for (USceneComponent* K : Kids)
+		if (K != Camera && K != Tunnel) K->SetHiddenInGame(!K->bHiddenInGame);
+	Msg(TEXT("debug: cockpit toggled"));
 }
 
 bool AShipPawn::JumpDirection(FVector& OutDir) const

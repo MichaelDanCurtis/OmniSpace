@@ -55,6 +55,8 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "OmniSpace|System")
 	const FStarSystemData& GetSystem() const { return System; }
+	/** Debug: toggle visibility of the sky dome / star. */
+	void DebugToggle(int32 What);
 
 	UFUNCTION(BlueprintPure, Category = "OmniSpace|System")
 	bool GetEntityPos(const FString& Id, FVector& OutPosM, double& OutRadiusM) const;

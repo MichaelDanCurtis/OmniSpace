@@ -132,6 +132,10 @@ protected:
 	void OnMouseLock();
 	void OnToggleAutopilot() { ToggleAutopilot(); }
 	void OnCycleJump() { CycleJumpTarget(); }
+	void OnDebugSky();
+	void OnDebugStar();
+	void OnDebugBodies();
+	void OnDebugCockpit();
 	void OnEngageJump() { EngageJump(); }
 	void BeginHyperspace();
 	void FlyHyperspace(float Dt);

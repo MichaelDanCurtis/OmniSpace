@@ -194,3 +194,11 @@ void ASystemDirector::Tick(float DeltaSeconds)
 	Time += DeltaSeconds;
 	PlaceAll();
 }
+
+void ASystemDirector::DebugToggle(int32 What)
+{
+	AActor* A = What == 0 ? static_cast<AActor*>(Sky) : What == 1 ? static_cast<AActor*>(Star) : nullptr;
+	if (What == 2) { for (FUniverseEntity& E : Entities) if (E.Actor && E.Kind != TEXT("star")) E.Actor->SetActorHiddenInGame(!E.Actor->IsHidden()); return; }
+	if (A) A->SetActorHiddenInGame(!A->IsHidden());
+	UE_LOG(LogOmniSpace, Log, TEXT("DebugToggle %d -> hidden=%d"), What, A ? A->IsHidden() : -1);
+}
