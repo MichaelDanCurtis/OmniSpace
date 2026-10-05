@@ -147,7 +147,23 @@ void AOmniGameMode::EnterSystem(const FStarSystemData& System, bool bArrivingFro
 		// hyperspace arrival: near the star, in supercruise, star off to one side, throttle closed
 		double StarR = System.Star.RadiusSolar * 695700000.0;
 		FVector Dir = FVector(0.6, 0.75, 0.25).GetSafeNormal();
-		FVector Pos = Dir * FMath::Max(StarR * 9.0, 4e8);
+		double Range = FMath::Max(StarR * 9.0, 4e8);
+		FVector Pos = Dir * Range;
+		// keep clear of any body parked near the star (hot giants hug red dwarfs)
+		for (int Try = 0; Try < 16; Try++)
+		{
+			bool bClear = true;
+			for (const FString& Id : Director->GetEntityIds())
+			{
+				FVector BP; double BR;
+				if (Id == TEXT("star") || !Director->GetEntityPos(Id, BP, BR)) continue;
+				if (FVector::Dist(BP, Pos) < FMath::Max(BR * 8.0, 3e8)) { bClear = false; break; }
+			}
+			if (bClear) break;
+			Dir = FQuat(FVector::UpVector, FMath::DegreesToRadians(37.0)).RotateVector(Dir);
+			Range *= 1.15;
+			Pos = Dir * Range;
+		}
 		FVector Side = FVector::CrossProduct(Dir, FVector::UpVector).GetSafeNormal();
 		Ship->Place(Pos, Pos + Side * 1e9 - Dir * 4e8);
 		Ship->Mode = EFlightMode::Supercruise;
