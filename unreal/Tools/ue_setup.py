@@ -274,6 +274,37 @@ def sun_local_nodes(mat, x, y):
     return tr, tr2
 
 
+def build_tunnel(mat):
+    """Hyperspace tunnel seen from inside a long cylinder: streaks racing past, tinted by the destination star."""
+    color = vec_param(mat, "Color", (0.6, 0.7, 1.0, 1), -700, 0)
+    time = scalar_param(mat, "Time", 0, -700, 150)
+    localpos = MEL.create_material_expression(mat, unreal.MaterialExpressionTransformPosition, -700, -250)
+    localpos.set_editor_property("transform_source_type", unreal.MaterialPositionTransformSource.TRANSFORMPOSSOURCE_WORLD)
+    localpos.set_editor_property("transform_type", unreal.MaterialPositionTransformSource.TRANSFORMPOSSOURCE_LOCAL)
+    wp = MEL.create_material_expression(mat, unreal.MaterialExpressionWorldPosition, -900, -250)
+    MEL.connect_material_expressions(wp, "", localpos, "")
+    code = NOISE_HLSL + """
+// cylinder mesh: radius 50, z in -50..50 (its axis is the ship's forward)
+float ang = atan2(LocalPos.y, LocalPos.x);
+float z = LocalPos.z / 50.0;
+float3 q = float3(ang * 3.0, z * 4.0 - Time * 2.5, 0.0);
+float streak = pow(saturate(fbm(q, 4) * 0.5 + 0.5), 7.0);
+float fine = pow(saturate(snoise(float3(ang * 24.0, z * 40.0 - Time * 9.0, 2.0)) * 0.5 + 0.5), 10.0);
+float pulse = 0.75 + 0.25 * sin(Time * 4.0 + z * 6.0);
+float3 col = Color * (streak * 5.0 + fine * 3.0) * pulse + Color * 0.04;
+// fade toward the far ends so the cylinder caps never show
+col *= smoothstep(1.0, 0.6, abs(z));
+return col;
+"""
+    node = custom(mat, code, ["LocalPos", "Color", "Time"], -300, 0)
+    MEL.connect_material_expressions(localpos, "", node, "LocalPos")
+    MEL.connect_material_expressions(color, "", node, "Color")
+    MEL.connect_material_expressions(time, "", node, "Time")
+    mat.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_UNLIT)
+    mat.set_editor_property("two_sided", True)
+    MEL.connect_material_property(node, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
+
+
 def build_rings(mat):
     color = vec_param(mat, "Color", (0.8, 0.78, 0.74, 1), -700, 0)
     opacity = scalar_param(mat, "Opacity", 0.7, -700, 150)
@@ -422,5 +453,6 @@ ensure_material("M_Star", build_star)
 ensure_material("M_Rings", build_rings)
 ensure_material("M_Planet", build_planet)
 ensure_material("M_Sky", build_sky)
+ensure_material("M_Tunnel", build_tunnel)
 ensure_map()
 log("done")

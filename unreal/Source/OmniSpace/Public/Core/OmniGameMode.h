@@ -25,8 +25,31 @@ public:
 
 	UFUNCTION()
 	void OnSystemLoaded(const FString& SystemId, bool bSuccess, const FStarSystemData& System);
+	UFUNCTION()
+	void OnForgeLog(const FString& SystemId, const TArray<FString>& Lines);
+
+	/** Star we are currently in (galaxy descriptor). */
+	UPROPERTY(BlueprintReadOnly, Category = "OmniSpace") FStarDescriptor CurrentStar;
+	/** Cartography log lines streamed by the Forge for the system being jumped to. */
+	UPROPERTY(BlueprintReadOnly, Category = "OmniSpace") TArray<FString> JumpLog;
+
+	/** Hyperspace: ask the Forge for the destination; the ship completes the jump when ready. */
+	void BeginJump(const FStarDescriptor& Dest);
+	bool IsJumpReady() const { return bJumpReady; }
+	bool JumpFailed() const { return bJumpFailed; }
+	void CompleteJump();
+	void PrefetchJump(const FStarDescriptor& Dest);
 
 private:
 	FString PendingSystemId;
 	bool bPendingJump = false;
+	bool bJumpReady = false;
+	bool bJumpFailed = false;
+	FStarSystemData ArrivedSystem;
+	FStarSystemData PreviousSystem;
+	FStarDescriptor PreviousStar;
+public:
+	/** Jump failed: put the ship back in the system it left. */
+	void AbortJump();
+	TArray<FStarDescriptor> NeighborsOf(const FStarDescriptor& Star) const;
 };

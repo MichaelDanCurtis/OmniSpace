@@ -35,13 +35,70 @@ void AOmniGameMode::BeginPlay()
 	UForgeSubsystem* Forge = GI->GetSubsystem<UForgeSubsystem>();
 	UGalaxySubsystem* Galaxy = GI->GetSubsystem<UGalaxySubsystem>();
 	Forge->OnSystemLoaded.AddDynamic(this, &AOmniGameMode::OnSystemLoaded);
+	Forge->OnLog.AddDynamic(this, &AOmniGameMode::OnForgeLog);
 	FString StartId = TEXT("kelvar");
 	FParse::Value(FCommandLine::Get(), TEXT("StartSystem="), StartId);
 	FStarDescriptor Star;
 	if (!Galaxy->GetStar(StartId, Star)) Galaxy->GetStar(TEXT("kelvar"), Star);
 	PendingSystemId = Star.Id;
+	CurrentStar = Star;
 	bPendingJump = false;
-	Forge->LoadSystem(Star, Galaxy->StarsNear(Star.Pos, 25.0), Commander);
+	Forge->LoadSystem(Star, NeighborsOf(Star), Commander);
+}
+
+TArray<FStarDescriptor> AOmniGameMode::NeighborsOf(const FStarDescriptor& Star) const
+{
+	UGalaxySubsystem* Galaxy = GetGameInstance()->GetSubsystem<UGalaxySubsystem>();
+	TArray<FStarDescriptor> Near = Galaxy->StarsNear(Star.Pos, 25.0);
+	Near.RemoveAll([&](const FStarDescriptor& S) { return S.Id == Star.Id; });
+	Near.Sort([&](const FStarDescriptor& A, const FStarDescriptor& B) { return FVector::DistSquared(A.Pos, Star.Pos) < FVector::DistSquared(B.Pos, Star.Pos); });
+	if (Near.Num() > 6) Near.SetNum(6);
+	return Near;
+}
+
+void AOmniGameMode::PrefetchJump(const FStarDescriptor& Dest)
+{
+	UForgeSubsystem* Forge = GetGameInstance()->GetSubsystem<UForgeSubsystem>();
+	FStarSystemData Tmp;
+	if (!Forge->GetCached(Dest.Id, Tmp)) Forge->Prefetch(Dest, NeighborsOf(Dest), Commander);
+}
+
+void AOmniGameMode::BeginJump(const FStarDescriptor& Dest)
+{
+	UForgeSubsystem* Forge = GetGameInstance()->GetSubsystem<UForgeSubsystem>();
+	PendingSystemId = Dest.Id;
+	bPendingJump = true;
+	bJumpReady = false;
+	bJumpFailed = false;
+	JumpLog.Reset();
+	PreviousStar = CurrentStar;
+	if (Director) PreviousSystem = Director->GetSystem();
+	CurrentStar = Dest;
+	if (Director) Director->Clear();
+	Forge->LoadSystem(Dest, NeighborsOf(Dest), Commander);
+}
+
+void AOmniGameMode::CompleteJump()
+{
+	if (!bJumpReady) return;
+	bJumpReady = false;
+	bPendingJump = false;
+	EnterSystem(ArrivedSystem, true);
+}
+
+void AOmniGameMode::AbortJump()
+{
+	bPendingJump = false;
+	bJumpReady = false;
+	bJumpFailed = false;
+	CurrentStar = PreviousStar;
+	PendingSystemId = PreviousStar.Id;
+	if (!PreviousSystem.Id.IsEmpty()) EnterSystem(PreviousSystem, true);
+}
+
+void AOmniGameMode::OnForgeLog(const FString& SystemId, const TArray<FString>& Lines)
+{
+	if (SystemId == PendingSystemId) JumpLog = Lines;
 }
 
 void AOmniGameMode::OnSystemLoaded(const FString& SystemId, bool bSuccess, const FStarSystemData& System)
@@ -50,9 +107,17 @@ void AOmniGameMode::OnSystemLoaded(const FString& SystemId, bool bSuccess, const
 	if (!bSuccess)
 	{
 		UE_LOG(LogOmniSpace, Error, TEXT("Could not load system %s"), *SystemId);
+		bJumpFailed = true;
 		return;
 	}
-	EnterSystem(System, bPendingJump);
+	if (bPendingJump)
+	{
+		// hold until the ship's hyperspace sequence is ready to drop out
+		ArrivedSystem = System;
+		bJumpReady = true;
+		return;
+	}
+	EnterSystem(System, false);
 }
 
 void AOmniGameMode::EnterSystem(const FStarSystemData& System, bool bArrivingFromJump)

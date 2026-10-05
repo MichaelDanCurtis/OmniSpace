@@ -1,6 +1,7 @@
 #include "Core/OmniHUD.h"
 #include "Ship/ShipPawn.h"
 #include "World/SystemDirector.h"
+#include "Core/OmniGameMode.h"
 #include "Engine/Canvas.h"
 #include "Engine/Font.h"
 #include "Engine/Engine.h"
@@ -54,7 +55,37 @@ void AOmniHUD::DrawHUD()
 	Line(ModeNames[static_cast<int>(Ship->Mode)], Cyan);
 	Line(FString::Printf(TEXT("SPEED %s   THR %3.0f%%   %s"), *FmtSpeed(Ship->CurrentSpeed()), Ship->Throttle * 100, Ship->bFlightAssist ? TEXT("FA ON") : TEXT("FA OFF")), Cyan);
 	Line(FString::Printf(TEXT("HULL %3.0f%%  SHLD %3.0f%%  FUEL %4.1f t  HEAT %3.0f%%"), Ship->Hull * 100, Ship->Shields * 100, Ship->Fuel, Ship->Heat * 100), Cyan);
-	if (Ship->FsdKind != EFsdKind::None) Line(FString::Printf(TEXT("FSD CHARGING %3.0f%%"), Ship->FsdProgress * 100), Amber);
+	if (Ship->FsdKind != EFsdKind::None) Line(FString::Printf(TEXT("FSD CHARGING %3.0f%%%s"), Ship->FsdProgress * 100, Ship->FsdKind == EFsdKind::Jump ? TEXT("  (JUMP)") : TEXT("")), Amber);
+	if (!Ship->JumpTargetId.IsEmpty())
+	{
+		FVector JD;
+		bool bAligned = Ship->JumpDirection(JD) && FVector::DotProduct(Ship->GetActorQuat().GetForwardVector(), JD) > FMath::Cos(0.2);
+		Line(FString::Printf(TEXT("JUMP: %s  %.1f ly  %s"), *Ship->JumpTarget.Name.ToUpper(), Ship->JumpDistanceLy(), bAligned ? TEXT("ALIGNED - H to jump") : TEXT("align with marker")), bAligned ? FLinearColor::Green : Amber);
+		if (Ship->Mode != EFlightMode::Hyperspace)
+		{
+			FVector Screen = Project(JD * 1.0e9);
+			if (Screen.Z > 0)
+			{
+				// diamond marker for the destination star
+				DrawLine(Screen.X - 10, Screen.Y, Screen.X, Screen.Y - 10, Amber, 1.5f);
+				DrawLine(Screen.X, Screen.Y - 10, Screen.X + 10, Screen.Y, Amber, 1.5f);
+				DrawLine(Screen.X + 10, Screen.Y, Screen.X, Screen.Y + 10, Amber, 1.5f);
+				DrawLine(Screen.X, Screen.Y + 10, Screen.X - 10, Screen.Y, Amber, 1.5f);
+				DrawText(Ship->JumpTarget.Name.ToUpper(), Amber, Screen.X + 14, Screen.Y - 8, Font, 1.0f);
+			}
+		}
+	}
+	if (Ship->Mode == EFlightMode::Hyperspace)
+	{
+		DrawText(FString::Printf(TEXT("HYPERSPACE  >>  %s"), *Ship->JumpTarget.Name.ToUpper()), FLinearColor::White, W / 2 - 160, H * 0.3f, Font, 1.6f);
+		if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode()))
+		{
+			float LY = H * 0.3f + 40;
+			int32 Shown = FMath::Min(GM->JumpLog.Num(), FMath::FloorToInt32((Ship->HyperT - 0.8) / 0.55) + 1);
+			for (int32 i = 0; i < Shown; i++) { DrawText(GM->JumpLog[i], Cyan, W / 2 - 160, LY, Font, 1.0f); LY += 20; }
+			if (!GM->IsJumpReady()) DrawText(TEXT("Stellar Forge charting the system..."), FLinearColor(0.6f, 0.65f, 0.7f), W / 2 - 160, LY + 10, Font, 1.0f);
+		}
+	}
 	if (Ship->IsMassLocked() && Ship->Mode == EFlightMode::Normal) Line(TEXT("MASS LOCKED"), Amber);
 	if (Ship->bAutopilot) Line(TEXT("AUTOPILOT"), FLinearColor::Green);
 	if (!Ship->DockingStationId.IsEmpty() && Ship->Mode == EFlightMode::Normal) Line(FString::Printf(TEXT("DOCKING: %s BAY %d"), *Ship->DockingStationId, Ship->DockingBay + 1), FLinearColor::Green);
@@ -77,5 +108,5 @@ void AOmniHUD::DrawHUD()
 	// messages
 	Y = H - 30 - 20 * FMath::Min(6, Ship->Messages.Num());
 	for (int i = FMath::Max(0, Ship->Messages.Num() - 6); i < Ship->Messages.Num(); i++) Line(Ship->Messages[i], FLinearColor(0.85f, 0.92f, 1.f));
-	DrawText(TEXT("W/S throttle  mouse/arrows steer  A/D roll  Q/E R/F thrusters  Tab boost  J supercruise  T target  P autopilot  L dock/launch  Z FA  X stop  C 75%"), FLinearColor(0.5f, 0.6f, 0.7f), 30, H - 12, Font, 0.9f);
+	DrawText(TEXT("W/S throttle  mouse/arrows steer  A/D roll  Q/E R/F thrusters  Tab boost  J supercruise  T target  N jump target  H jump  P autopilot  L dock/launch  Z FA  X stop  C 75%"), FLinearColor(0.5f, 0.6f, 0.7f), 30, H - 12, Font, 0.9f);
 }

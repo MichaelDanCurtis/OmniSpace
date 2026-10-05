@@ -56,6 +56,11 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Ship") int32 DockingBay = 0;
 	UPROPERTY(BlueprintReadOnly, Category = "Ship") TArray<FString> Messages;
 	UPROPERTY(BlueprintReadOnly, Category = "Ship") bool bAutopilot = false;
+	/** Next hyperspace destination (galaxy star id) and its descriptor. */
+	UPROPERTY(BlueprintReadOnly, Category = "Ship") FString JumpTargetId;
+	UPROPERTY(BlueprintReadOnly, Category = "Ship") FStarDescriptor JumpTarget;
+	UPROPERTY(BlueprintReadOnly, Category = "Ship") double JumpRangeLy = 18.0;
+	UPROPERTY(BlueprintReadOnly, Category = "Ship") double HyperT = 0;
 
 	UFUNCTION(BlueprintCallable, Category = "Ship") void Msg(const FString& Text);
 	UFUNCTION(BlueprintCallable, Category = "Ship") void SetTarget(const FString& Id);
@@ -64,6 +69,11 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Ship") void RequestDocking();
 	UFUNCTION(BlueprintCallable, Category = "Ship") void Launch();
 	UFUNCTION(BlueprintCallable, Category = "Ship") void ToggleAutopilot();
+	UFUNCTION(BlueprintCallable, Category = "Ship") void CycleJumpTarget();
+	UFUNCTION(BlueprintCallable, Category = "Ship") bool EngageJump();
+	/** Direction (world) toward the jump target star; false if none. */
+	UFUNCTION(BlueprintPure, Category = "Ship") bool JumpDirection(FVector& OutDir) const;
+	UFUNCTION(BlueprintPure, Category = "Ship") double JumpDistanceLy() const;
 	UFUNCTION(BlueprintCallable, Category = "Ship") bool IsMassLocked() const;
 	UFUNCTION(BlueprintPure, Category = "Ship") double CurrentSpeed() const;
 	UFUNCTION(BlueprintPure, Category = "Ship") ASystemDirector* GetDirector() const;
@@ -120,6 +130,13 @@ protected:
 	void OnCycleTarget() { CycleTarget(); }
 	void OnMouseLock();
 	void OnToggleAutopilot() { ToggleAutopilot(); }
+	void OnCycleJump() { CycleJumpTarget(); }
+	void OnEngageJump() { EngageJump(); }
+	void BeginHyperspace();
+	void FlyHyperspace(float Dt);
+	UPROPERTY() TObjectPtr<class UStaticMeshComponent> Tunnel;
+	UPROPERTY() TObjectPtr<class UMaterialInstanceDynamic> TunnelMID;
+	double FsdWaitAlign = 0;
 
 	struct FApControls { double Pitch = 0, Yaw = 0, Throttle = 0; bool bEngageSC = false, bDropSC = false; };
 	bool AutopilotControls(FApControls& Out);

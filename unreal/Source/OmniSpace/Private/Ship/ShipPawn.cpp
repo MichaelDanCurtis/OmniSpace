@@ -1,5 +1,10 @@
 #include "Ship/ShipPawn.h"
 #include "Ship/Cockpit.h"
+#include "Core/OmniGameMode.h"
+#include "Galaxy/GalaxySubsystem.h"
+#include "World/OmniAssets.h"
+#include "Components/StaticMeshComponent.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "World/SystemDirector.h"
 #include "World/StationActor.h"
 #include "OmniSpace.h"
@@ -50,6 +55,17 @@ void AShipPawn::BeginPlay()
 	Super::BeginPlay();
 	Orientation = GetActorQuat();
 	OmniCockpit::Build(this, Root);
+	// hyperspace tunnel: a long cylinder around the camera along +X, shown only while jumping
+	Tunnel = NewObject<UStaticMeshComponent>(this);
+	Tunnel->SetStaticMesh(OmniAssets::CylinderMesh());
+	Tunnel->SetupAttachment(Root);
+	Tunnel->SetRelativeRotation(FRotator(90, 0, 0)); // cylinder axis Z -> X
+	Tunnel->SetRelativeScale3D(FVector(600, 600, 6000)); // 600 m across, 6 km long
+	Tunnel->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	Tunnel->SetCastShadow(false);
+	Tunnel->SetVisibility(false);
+	Tunnel->RegisterComponent();
+	TunnelMID = OmniAssets::MakeMID(Tunnel, OmniAssets::MaterialOr(TEXT("/Game/Materials/M_Tunnel.M_Tunnel"), TEXT("/Engine/EngineMaterials/EmissiveMeshMaterial.EmissiveMeshMaterial")), this);
 	if (APlayerController* PC = Cast<APlayerController>(GetController()))
 	{
 		PC->bShowMouseCursor = false;
@@ -103,6 +119,8 @@ void AShipPawn::SetupPlayerInputComponent(UInputComponent* IC)
 	IC->BindKey(EKeys::T, IE_Pressed, this, &AShipPawn::OnCycleTarget);
 	IC->BindKey(EKeys::LeftMouseButton, IE_Pressed, this, &AShipPawn::OnMouseLock);
 	IC->BindKey(EKeys::P, IE_Pressed, this, &AShipPawn::OnToggleAutopilot);
+	IC->BindKey(EKeys::N, IE_Pressed, this, &AShipPawn::OnCycleJump);
+	IC->BindKey(EKeys::H, IE_Pressed, this, &AShipPawn::OnEngageJump);
 }
 
 void AShipPawn::OnMouseX(float V)
@@ -221,9 +239,9 @@ void AShipPawn::ToggleSupercruise()
 
 void AShipPawn::ToggleAutopilot()
 {
-	if (!bAutopilot && TargetId.IsEmpty())
+	if (!bAutopilot && TargetId.IsEmpty() && JumpTargetId.IsEmpty())
 	{
-		Msg(TEXT("Autopilot needs a target (press T)"));
+		Msg(TEXT("Autopilot needs a target (T) or a jump destination (N)"));
 		return;
 	}
 	bAutopilot = !bAutopilot;
@@ -233,7 +251,21 @@ void AShipPawn::ToggleAutopilot()
 
 bool AShipPawn::AutopilotControls(FApControls& Out)
 {
-	if (!Director || TargetId.IsEmpty()) return false;
+	if (!Director) return false;
+	if (TargetId.IsEmpty() || FsdKind == EFsdKind::Jump)
+	{
+		// no local target: align with the jump destination and engage
+		FVector Dir;
+		if (!JumpDirection(Dir)) return false;
+		const FVector L = Orientation.UnrotateVector(Dir);
+		const double YawE = FMath::Atan2(L.Y, L.X), PitchE = FMath::Atan2(L.Z, FMath::Sqrt(L.X * L.X + L.Y * L.Y));
+		const bool bLocked = Mode == EFlightMode::Normal && IsMassLocked();
+		if (FMath::Sqrt(YawE * YawE + PitchE * PitchE) < 0.08 && FsdKind == EFsdKind::None && !bLocked && !EngageJump()) return false;
+		Out.Pitch = Clamp(PitchE * 3.0, -1, 1);
+		Out.Yaw = Clamp(YawE * 3.0, -1, 1);
+		Out.Throttle = bLocked ? 1.0 : (Mode == EFlightMode::Supercruise ? 0.0 : 0.5);
+		return true;
+	}
 	FVector TP; double TR;
 	if (!Director->GetEntityPos(TargetId, TP, TR)) return false;
 	const FVector Ship = Director->GetShipUniversePos();
@@ -312,6 +344,104 @@ bool AShipPawn::AutopilotControls(FApControls& Out)
 	Out.bEngageSC = bEngageSC;
 	Out.bDropSC = bDropSC;
 	return true;
+}
+
+bool AShipPawn::JumpDirection(FVector& OutDir) const
+{
+	AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode());
+	if (!GM || JumpTargetId.IsEmpty()) return false;
+	// galaxy positions are TS-style (x, yUp, zFwd); the system frame maps that to UE (x, zFwd, yUp)
+	FVector D = JumpTarget.Pos - GM->CurrentStar.Pos;
+	OutDir = FVector(D.X, D.Z, D.Y).GetSafeNormal();
+	return !OutDir.IsNearlyZero();
+}
+
+double AShipPawn::JumpDistanceLy() const
+{
+	AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode());
+	if (!GM || JumpTargetId.IsEmpty()) return 0;
+	return FVector::Dist(JumpTarget.Pos, GM->CurrentStar.Pos);
+}
+
+void AShipPawn::CycleJumpTarget()
+{
+	AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode());
+	UGalaxySubsystem* Galaxy = GetGameInstance()->GetSubsystem<UGalaxySubsystem>();
+	if (!GM || !Galaxy) return;
+	const FStarDescriptor& Cur = GM->CurrentStar;
+	TArray<FStarDescriptor> Near = Galaxy->StarsNear(Cur.Pos, JumpRangeLy);
+	Near.RemoveAll([&](const FStarDescriptor& S) { return S.Id == Cur.Id; });
+	if (Near.Num() == 0) { Msg(TEXT("No stars within jump range")); return; }
+	Near.Sort([&](const FStarDescriptor& A, const FStarDescriptor& B) { return FVector::DistSquared(A.Pos, Cur.Pos) < FVector::DistSquared(B.Pos, Cur.Pos); });
+	int32 I = Near.IndexOfByPredicate([&](const FStarDescriptor& S) { return S.Id == JumpTargetId; });
+	const FStarDescriptor& Next = Near[(I + 1) % Near.Num()];
+	JumpTargetId = Next.Id;
+	JumpTarget = Next;
+	Msg(FString::Printf(TEXT("Jump target: %s  %.1f ly  (%s)"), *Next.Name, FVector::Dist(Next.Pos, Cur.Pos), *UGalaxySubsystem::ClassLabel(Next.Cls)));
+	GM->PrefetchJump(Next); // start the Forge early so the jump is quick
+}
+
+bool AShipPawn::EngageJump()
+{
+	if (Mode != EFlightMode::Normal && Mode != EFlightMode::Supercruise) return false;
+	if (JumpTargetId.IsEmpty()) { Msg(TEXT("No hyperspace destination (press N to pick a nearby star)")); return false; }
+	if (FsdKind != EFsdKind::None) { CancelFsd(TEXT("FSD charge cancelled")); return false; }
+	const double D = JumpDistanceLy();
+	if (D > JumpRangeLy) { Msg(FString::Printf(TEXT("%s is out of range (%.1f ly > %.1f ly)"), *JumpTarget.Name, D, JumpRangeLy)); return false; }
+	const double Need = 0.35 + 3.4 * FMath::Square(FMath::Min(1.0, D / JumpRangeLy));
+	if (Fuel < Need) { Msg(FString::Printf(TEXT("Insufficient fuel for jump (%.1f t needed)"), Need)); return false; }
+	if (Mode == EFlightMode::Normal && IsMassLocked()) { Msg(TEXT("Mass locked - move away from the station")); return false; }
+	FsdKind = EFsdKind::Jump;
+	FsdTime = 0;
+	FsdDuration = 5;
+	FsdWaitAlign = 0;
+	Msg(FString::Printf(TEXT("Frame shift drive charging - jump to %s"), *JumpTarget.Name));
+	return true;
+}
+
+void AShipPawn::BeginHyperspace()
+{
+	AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode());
+	if (!GM) return;
+	const double D = JumpDistanceLy();
+	Fuel = FMath::Max(0.0, Fuel - (0.35 + 3.4 * FMath::Square(FMath::Min(1.0, D / JumpRangeLy))));
+	Mode = EFlightMode::Hyperspace;
+	HyperT = 0;
+	bAutopilot = false;
+	DockingStationId.Empty();
+	TargetId.Empty();
+	Velocity = FVector::ZeroVector;
+	AngVel = FVector::ZeroVector;
+	if (Tunnel) Tunnel->SetVisibility(true);
+	if (TunnelMID) TunnelMID->SetVectorParameterValue(TEXT("Color"), JumpTarget.LinearColor());
+	Msg(FString::Printf(TEXT("Hyperspace jump - %s - %.2f ly"), *JumpTarget.Name, D));
+	GM->BeginJump(JumpTarget);
+}
+
+void AShipPawn::FlyHyperspace(float Dt)
+{
+	AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode());
+	HyperT += Dt;
+	if (TunnelMID) TunnelMID->SetScalarParameterValue(TEXT("Time"), static_cast<float>(HyperT));
+	// gentle drift so the tunnel feels alive
+	Orientation = (Orientation * FQuat(FVector::ForwardVector, 0.03 * Dt)).GetNormalized();
+	SetActorRotation(Orientation);
+	if (!GM) return;
+	const bool bRevealDone = HyperT > 0.8 + GM->JumpLog.Num() * 0.55;
+	if (GM->JumpFailed())
+	{
+		Msg(TEXT("Jump failed - the Forge could not chart the system. Frame shift reverted."));
+		if (Tunnel) Tunnel->SetVisibility(false);
+		JumpTargetId.Empty();
+		GM->AbortJump(); // re-enters the system we left, in supercruise
+		return;
+	}
+	if (GM->IsJumpReady() && HyperT > 6.5 && (bRevealDone || HyperT > 14))
+	{
+		if (Tunnel) Tunnel->SetVisibility(false);
+		JumpTargetId.Empty();
+		GM->CompleteJump(); // -> EnterSystem(..., true): places us near the star in supercruise
+	}
 }
 
 void AShipPawn::RequestDocking()
@@ -662,6 +792,21 @@ void AShipPawn::Tick(float Dt)
 			SupercruiseSpeed = FMath::Max(SupercruiseMin, Velocity.Size());
 			Msg(TEXT("Supercruise engaged"));
 		}
+		else if (FsdTime >= FsdDuration && FsdKind == EFsdKind::Jump)
+		{
+			FVector Dir;
+			if (!JumpDirection(Dir)) FsdKind = EFsdKind::None;
+			else if (FVector::DotProduct(Orientation.GetForwardVector(), Dir) > FMath::Cos(0.2))
+			{
+				FsdKind = EFsdKind::None;
+				BeginHyperspace();
+			}
+			else
+			{
+				FsdWaitAlign += Dt;
+				if (FsdWaitAlign > 20) CancelFsd(TEXT("Jump aborted - not aligned with destination"));
+			}
+		}
 	}
 	else FsdProgress = 0;
 
@@ -669,6 +814,7 @@ void AShipPawn::Tick(float Dt)
 	{
 	case EFlightMode::Normal: FlyNormal(Dt); break;
 	case EFlightMode::Supercruise: FlySupercruise(Dt); break;
+	case EFlightMode::Hyperspace: FlyHyperspace(Dt); break;
 	case EFlightMode::Docking: FlyDocking(Dt); break;
 	case EFlightMode::Launching: FlyLaunch(Dt); break;
 	case EFlightMode::Docked:
