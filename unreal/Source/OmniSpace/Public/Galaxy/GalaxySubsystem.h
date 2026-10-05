@@ -6,7 +6,7 @@
 #include "Data/StarSystemData.h"
 #include "GalaxySubsystem.generated.h"
 
-namespace omni::galaxy { class Galaxy; struct Star; }
+namespace omni { namespace galaxy { class Galaxy; struct Star; } }
 
 UCLASS()
 class OMNISPACE_API UGalaxySubsystem : public UGameInstanceSubsystem
@@ -39,5 +39,8 @@ public:
 	static FStarDescriptor Convert(const omni::galaxy::Star& S);
 
 private:
-	TUniquePtr<omni::galaxy::Galaxy> Galaxy;
+	// Raw pointer on purpose: omni::galaxy::Galaxy is incomplete in the UHT-generated
+	// .gen.cpp (which defines the constructors/destructor), so a TUniquePtr would try
+	// to delete an incomplete type there. Owned: created in Initialize, freed in Deinitialize.
+	omni::galaxy::Galaxy* Galaxy = nullptr;
 };

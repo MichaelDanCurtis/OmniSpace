@@ -8,7 +8,10 @@
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
 #include "CollisionQueryParams.h"
+#include "CollisionShape.h"
 #include "Engine/EngineTypes.h"
+#include "Engine/HitResult.h"
+#include "InputCoreTypes.h"
 
 namespace
 {
@@ -37,10 +40,12 @@ void AShipPawn::BeginPlay()
 	if (APlayerController* PC = Cast<APlayerController>(GetController()))
 	{
 		PC->bShowMouseCursor = false;
-		FInputModeGameOnly Mode;
-		PC->SetInputMode(Mode);
+		FInputModeGameOnly InputMode; // not "Mode": that would shadow the EFlightMode member
+		PC->SetInputMode(InputMode);
 	}
 }
+
+ASystemDirector* AShipPawn::GetDirector() const { return Director; }
 
 void AShipPawn::SetupPlayerInputComponent(UInputComponent* IC)
 {
@@ -432,7 +437,7 @@ void AShipPawn::FlySupercruise(float Dt)
 	double StarR = Director->GetSystem().Star.RadiusSolar * 695700000.0;
 	double Ratio = Ship.Size() / StarR;
 	Heat = Clamp(0.2 + FMath::Max(0.0, 3.0 - Ratio) * 0.35, 0, 1.2);
-	if (Ratio < 4 && Fuel < 16) Fuel = FMath::Min(16.0, Fuel + 0.9 * FMath::Pow(1.2 / FMath::Max(Ratio, 1.2), 2) * Dt);
+	if (Ratio < 4 && Fuel < 16) Fuel = FMath::Min(16.0, Fuel + 0.9 * FMath::Pow(1.2 / FMath::Max(Ratio, 1.2), 2.0) * Dt);
 }
 
 void AShipPawn::FlyDocking(float Dt)

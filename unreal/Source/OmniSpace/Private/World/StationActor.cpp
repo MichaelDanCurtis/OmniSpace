@@ -1,6 +1,8 @@
 #include "World/StationActor.h"
 #include "World/OmniAssets.h"
 #include "Components/StaticMeshComponent.h"
+#include "Engine/StaticMesh.h"
+#include "Materials/MaterialInterface.h"
 #include "Materials/MaterialInstanceDynamic.h"
 
 AStationActor::AStationActor()
@@ -20,8 +22,10 @@ UStaticMeshComponent* AStationActor::AddPart(UStaticMesh* Mesh, const FVector& P
 	C->SetRelativeLocation(PosM * 100.0);
 	C->SetRelativeRotation(Rot);
 	C->SetRelativeScale3D(SizeM); // engine basic shapes are 1 m across
-	C->SetCollisionEnabled(bCollide ? ECollisionEnabled::QueryAndPhysics : ECollisionEnabled::NoCollision);
+	// Profile first: SetCollisionProfileName also applies the profile's CollisionEnabled,
+	// which would otherwise undo NoCollision on the light-strip parts.
 	C->SetCollisionProfileName(TEXT("BlockAll"));
+	C->SetCollisionEnabled(bCollide ? ECollisionEnabled::QueryAndPhysics : ECollisionEnabled::NoCollision);
 	C->SetMobility(EComponentMobility::Movable);
 	if (UMaterialInstanceDynamic* MID = OmniAssets::MakeMID(C, Mat, this))
 	{

@@ -64,7 +64,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Ship") void Launch();
 	UFUNCTION(BlueprintCallable, Category = "Ship") bool IsMassLocked() const;
 	UFUNCTION(BlueprintPure, Category = "Ship") double CurrentSpeed() const;
-	UFUNCTION(BlueprintPure, Category = "Ship") ASystemDirector* GetDirector() const { return Director; }
+	UFUNCTION(BlueprintPure, Category = "Ship") ASystemDirector* GetDirector() const;
 
 	/** Called by the game mode once the system is up. */
 	void AttachDirector(ASystemDirector* InDirector);

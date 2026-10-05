@@ -238,7 +238,8 @@ TSharedRef<FJsonObject> FStarSystemData::ToJson() const
 	P->SetNumberField(TEXT("population"), static_cast<double>(Profile.Population));
 	P->SetNumberField(TEXT("danger"), Profile.Danger);
 	J->SetObjectField(TEXT("profile"), P);
-	TArray<TSharedPtr<FJsonValue>> Bodies, Stations, Belts, Pois;
+	// Suffixed to avoid shadowing the members of the same name (-Wshadow is an error).
+	TArray<TSharedPtr<FJsonValue>> BodiesJson, StationsJson, BeltsJson, PoisJson;
 	for (const FBodyData& B : this->Bodies)
 	{
 		TSharedRef<FJsonObject> O = MakeShared<FJsonObject>();
@@ -270,7 +271,7 @@ TSharedRef<FJsonObject> FStarSystemData::ToJson() const
 		O->SetNumberField(TEXT("temperatureK"), B.TemperatureK);
 		O->SetNumberField(TEXT("gravityG"), B.GravityG);
 		O->SetStringField(TEXT("description"), B.Description);
-		Bodies.Add(MakeShared<FJsonValueObject>(O));
+		BodiesJson.Add(MakeShared<FJsonValueObject>(O));
 	}
 	for (const FStationData& S : this->Stations)
 	{
@@ -287,7 +288,7 @@ TSharedRef<FJsonObject> FStarSystemData::ToJson() const
 		O->SetArrayField(TEXT("services"), StrValues(S.Services));
 		O->SetStringField(TEXT("tagline"), S.Tagline);
 		O->SetStringField(TEXT("description"), S.Description);
-		Stations.Add(MakeShared<FJsonValueObject>(O));
+		StationsJson.Add(MakeShared<FJsonValueObject>(O));
 	}
 	for (const FBeltData& B : this->Belts)
 	{
@@ -298,7 +299,7 @@ TSharedRef<FJsonObject> FStarSystemData::ToJson() const
 		O->SetNumberField(TEXT("radiusM"), B.RadiusM);
 		O->SetNumberField(TEXT("widthM"), B.WidthM);
 		O->SetStringField(TEXT("composition"), B.Composition);
-		Belts.Add(MakeShared<FJsonValueObject>(O));
+		BeltsJson.Add(MakeShared<FJsonValueObject>(O));
 	}
 	for (const FPoiData& Pz : this->Pois)
 	{
@@ -311,12 +312,12 @@ TSharedRef<FJsonObject> FStarSystemData::ToJson() const
 		O->SetNumberField(TEXT("phase"), Pz.Phase);
 		O->SetStringField(TEXT("description"), Pz.Description);
 		O->SetNumberField(TEXT("reward"), Pz.Reward);
-		Pois.Add(MakeShared<FJsonValueObject>(O));
+		PoisJson.Add(MakeShared<FJsonValueObject>(O));
 	}
-	J->SetArrayField(TEXT("bodies"), Bodies);
-	J->SetArrayField(TEXT("stations"), Stations);
-	J->SetArrayField(TEXT("belts"), Belts);
-	J->SetArrayField(TEXT("pois"), Pois);
+	J->SetArrayField(TEXT("bodies"), BodiesJson);
+	J->SetArrayField(TEXT("stations"), StationsJson);
+	J->SetArrayField(TEXT("belts"), BeltsJson);
+	J->SetArrayField(TEXT("pois"), PoisJson);
 	return J;
 }
 

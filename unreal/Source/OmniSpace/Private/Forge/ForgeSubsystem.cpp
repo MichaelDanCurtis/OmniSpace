@@ -2,10 +2,17 @@
 #include "OmniSpace.h"
 #include "HttpModule.h"
 #include "Interfaces/IHttpResponse.h"
+#include "GenericPlatform/GenericPlatformHttp.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
+#include "Misc/Parse.h"
+#include "Misc/CommandLine.h"
+#include "HAL/PlatformMisc.h"
+#include "HAL/PlatformTime.h"
+#include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
+#include "Policies/CondensedJsonPrintPolicy.h"
 #include "TimerManager.h"
 #include "Engine/World.h"
 
@@ -82,7 +89,7 @@ void UForgeSubsystem::CheckHealth()
 		else S.Reason = TEXT("Stellar Forge server offline");
 		Self->Status = S;
 		Self->OnStatus.Broadcast(S);
-		UE_LOG(LogOmniSpace, Log, TEXT("Forge health: online=%d ai=%d model=%s reason=%s"), S.bOnline, S.bAi, *S.Model, *S.Reason);
+		UE_LOG(LogOmniSpace, Log, TEXT("Forge health: online=%d ai=%d model=%s reason=%s"), S.bOnline ? 1 : 0, S.bAi ? 1 : 0, *S.Model, *S.Reason);
 	});
 	Req->ProcessRequest();
 }
@@ -186,26 +193,26 @@ void UForgeSubsystem::PollJob(const FString& SystemId, double StartedAt)
 		Req->OnProcessRequestComplete().BindLambda([Weak, SystemId, StartedAt](FHttpRequestPtr, FHttpResponsePtr Resp, bool bOk)
 		{
 			if (!Weak.IsValid()) return;
-			UForgeSubsystem* Self = Weak.Get();
+			UForgeSubsystem* Inner = Weak.Get(); // not "Self": would shadow the outer lambda's local
 			TSharedPtr<FJsonObject> J = (bOk && Resp.IsValid()) ? ParseObject(Resp->GetContentAsString()) : nullptr;
-			if (!J.IsValid()) { Self->Finish(SystemId, false, FStarSystemData()); return; }
+			if (!J.IsValid()) { Inner->Finish(SystemId, false, FStarSystemData()); return; }
 			FString St;
 			J->TryGetStringField(TEXT("status"), St);
-			Self->OnLog.Broadcast(SystemId, LogLines(J));
+			Inner->OnLog.Broadcast(SystemId, LogLines(J));
 			if (St == TEXT("ready"))
 			{
 				FStarSystemData Sys;
 				const TSharedPtr<FJsonObject>* SysObj = nullptr;
-				if (J->TryGetObjectField(TEXT("system"), SysObj) && FStarSystemData::FromJson(*SysObj, Sys)) Self->Finish(SystemId, true, Sys);
-				else Self->Finish(SystemId, false, FStarSystemData());
+				if (J->TryGetObjectField(TEXT("system"), SysObj) && FStarSystemData::FromJson(*SysObj, Sys)) Inner->Finish(SystemId, true, Sys);
+				else Inner->Finish(SystemId, false, FStarSystemData());
 			}
-			else if (St == TEXT("generating")) Self->PollJob(SystemId, StartedAt);
+			else if (St == TEXT("generating")) Inner->PollJob(SystemId, StartedAt);
 			else
 			{
 				FString Err;
 				J->TryGetStringField(TEXT("error"), Err);
 				UE_LOG(LogOmniSpace, Warning, TEXT("Forge failed for %s: %s"), *SystemId, *Err);
-				Self->Finish(SystemId, false, FStarSystemData());
+				Inner->Finish(SystemId, false, FStarSystemData());
 			}
 		});
 		Req->ProcessRequest();

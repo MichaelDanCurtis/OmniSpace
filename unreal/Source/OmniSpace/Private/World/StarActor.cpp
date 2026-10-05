@@ -1,6 +1,8 @@
 #include "World/StarActor.h"
 #include "World/OmniAssets.h"
 #include "Components/StaticMeshComponent.h"
+#include "Engine/StaticMesh.h"
+#include "Materials/MaterialInterface.h"
 #include "Materials/MaterialInstanceDynamic.h"
 
 AStarActor::AStarActor()

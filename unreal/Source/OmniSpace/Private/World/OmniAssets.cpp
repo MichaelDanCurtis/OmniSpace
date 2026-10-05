@@ -3,13 +3,14 @@
 #include "Materials/MaterialInterface.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Components/PrimitiveComponent.h"
-#include "UObject/SoftObjectPath.h"
+#include "UObject/UObjectGlobals.h"
 
 namespace
 {
 	template <class T> T* LoadPath(const TCHAR* Path)
 	{
-		return Cast<T>(FSoftObjectPath(Path).TryLoad());
+		// LoadObject is a FindObject when already loaded, so this is cheap on repeat calls.
+		return LoadObject<T>(nullptr, Path);
 	}
 }
 

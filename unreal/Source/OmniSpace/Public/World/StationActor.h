@@ -7,6 +7,8 @@
 
 class UStaticMeshComponent;
 class USceneComponent;
+class UStaticMesh;
+class UMaterialInterface;
 
 /**
  * Placeholder procedural station (spire / ring / outpost) built from engine

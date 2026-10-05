@@ -12,11 +12,19 @@
 
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
+#include <initializer_list>
 #include <string>
 #include <vector>
 #include <unordered_map>
 #include <functional>
 #include <algorithm>
+
+// M_PI is POSIX, not ISO C++ (missing under MSVC without _USE_MATH_DEFINES).
+// Same literal as <math.h>, so results stay bit-exact.
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 namespace omni::galaxy
 {
@@ -403,7 +411,8 @@ namespace omni::galaxy
 			return nullptr;
 		}
 
-		std::vector<const Star*> near(const double p[3], double radius)
+		// Named `nearby` rather than `near`: <windef.h> defines `near` as a macro.
+		std::vector<const Star*> nearby(const double p[3], double radius)
 		{
 			double lo[3] = {p[0] - radius, p[1] - radius, p[2] - radius};
 			double hi[3] = {p[0] + radius, p[1] + radius, p[2] + radius};
@@ -451,7 +460,7 @@ namespace omni::galaxy
 				if (closed[cur.s->id]) continue;
 				closed[cur.s->id] = true;
 				if (++expanded > maxNodes) return {};
-				for (const Star* n : near(cur.s->pos, jumpRange))
+				for (const Star* n : nearby(cur.s->pos, jumpRange))
 				{
 					if (closed[n->id] || n->id == cur.s->id) continue;
 					double g = cur.g + dist(*cur.s, *n) + jumpRange * 0.35;

@@ -8,6 +8,9 @@
 #include "Engine/World.h"
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/WorldSettings.h"
+#include "Engine/GameInstance.h"
+#include "Misc/Parse.h"
+#include "Misc/CommandLine.h"
 
 AOmniGameMode::AOmniGameMode()
 {
@@ -22,7 +25,7 @@ void AOmniGameMode::BeginPlay()
 	if (AWorldSettings* WS = World->GetWorldSettings())
 	{
 		WS->bEnableWorldBoundsChecks = false;
-		WS->KillZ = -1e12;
+		WS->KillZ = -1e12f; // KillZ is a float
 	}
 	FActorSpawnParameters P;
 	Director = World->SpawnActor<ASystemDirector>(ASystemDirector::StaticClass(), FTransform::Identity, P);

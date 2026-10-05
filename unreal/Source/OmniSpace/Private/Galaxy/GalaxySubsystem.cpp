@@ -6,12 +6,14 @@ using namespace omni::galaxy;
 void UGalaxySubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
-	Galaxy = MakeUnique<omni::galaxy::Galaxy>();
+	delete Galaxy;
+	Galaxy = new omni::galaxy::Galaxy();
 }
 
 void UGalaxySubsystem::Deinitialize()
 {
-	Galaxy.Reset();
+	delete Galaxy;
+	Galaxy = nullptr;
 	Super::Deinitialize();
 }
 
@@ -45,7 +47,7 @@ TArray<FStarDescriptor> UGalaxySubsystem::StarsNear(const FVector& PosLy, double
 {
 	double P[3] = {PosLy.X, PosLy.Y, PosLy.Z};
 	TArray<FStarDescriptor> Out;
-	for (const Star* S : Galaxy->near(P, RadiusLy)) Out.Add(Convert(*S));
+	for (const Star* S : Galaxy->nearby(P, RadiusLy)) Out.Add(Convert(*S));
 	return Out;
 }
 

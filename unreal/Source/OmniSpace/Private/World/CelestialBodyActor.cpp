@@ -1,6 +1,8 @@
 #include "World/CelestialBodyActor.h"
 #include "World/OmniAssets.h"
 #include "Components/StaticMeshComponent.h"
+#include "Engine/StaticMesh.h"
+#include "Materials/MaterialInterface.h"
 #include "Materials/MaterialInstanceDynamic.h"
 
 ACelestialBodyActor::ACelestialBodyActor()
@@ -13,8 +15,9 @@ ACelestialBodyActor::ACelestialBodyActor()
 	Surface = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Surface"));
 	Surface->SetupAttachment(Tilt);
 	Surface->SetStaticMesh(OmniAssets::SphereMesh());
-	Surface->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	// Profile first: it also sets CollisionEnabled, so QueryOnly must come after.
 	Surface->SetCollisionProfileName(TEXT("BlockAll"));
+	Surface->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	Surface->bCastDynamicShadow = false;
 	Rings = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Rings"));
 	Rings->SetupAttachment(Tilt);
