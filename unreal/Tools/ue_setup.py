@@ -312,6 +312,8 @@ if (abs(z) > 0.985) {
   col = Color * (ring * (1.5 + 1.5 * spiral) + halo) * 4.0 + float3(1,1,1) * lens * (1.0 - inner) * 0.5;
   col *= 1.0 - inner;
   col += float3(0.3, 0.15, 0.6) * (1.0 - inner) * pow(saturate(1.0 - rr), 2.0) * 0.4;
+  // blend the cap rim into the wall so the horizon has no hard circular edge
+  col = lerp(col, Color * 0.6, smoothstep(0.7, 1.0, rr));
 } else {
   float3 q = float3(ang * 3.0, z * 4.0 - Time * 2.5, 0.0);
   float streak = pow(saturate(fbm(q, 4) * 0.5 + 0.5), 7.0);
@@ -343,6 +345,95 @@ def build_flash(mat):
     mat.set_editor_property("two_sided", True)
     MEL.connect_material_property(color, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
     MEL.connect_material_property(opacity, "", unreal.MaterialProperty.MP_OPACITY)
+
+
+def build_terrain(mat):
+    """Landing-tile ground: triplanar detail, slope-driven rock/soil blend from the planet palette,
+    optional snow caps and lava glow."""
+    c0 = vec_param(mat, "C0", (0.36, 0.32, 0.29, 1), -900, -300)
+    c1 = vec_param(mat, "C1", (0.54, 0.49, 0.43, 1), -900, -150)
+    c2 = vec_param(mat, "C2", (0.72, 0.67, 0.6, 1), -900, 0)
+    profile = scalar_param(mat, "Profile", 0, -900, 150)
+    seed = scalar_param(mat, "Seed", 0, -900, 250)
+    snow = scalar_param(mat, "Snow", 0, -900, 350)
+    glow = scalar_param(mat, "Glow", 0, -900, 450)
+    wp = MEL.create_material_expression(mat, unreal.MaterialExpressionWorldPosition, -900, -450)
+    nrm = MEL.create_material_expression(mat, unreal.MaterialExpressionVertexNormalWS, -900, -600)
+    code = NOISE_HLSL + """
+float3 p = WorldPos / 100.0; // metres
+float3 n = normalize(Normal);
+float slope = 1.0 - saturate(n.z);
+float3 sp = p * 0.02 + Seed;
+float macro = fbm(sp, 4) * 0.5 + 0.5;
+float detail = fbm(p * 0.35 + Seed, 4) * 0.5 + 0.5;
+float fine = snoise(p * 2.5 + Seed) * 0.5 + 0.5;
+// soil (C1) with patches of C2 on flats, rock (C0) on slopes
+float3 soil = lerp(C1, C2, smoothstep(0.45, 0.8, macro) * 0.7);
+soil *= 0.85 + 0.3 * detail;
+float3 rock = C0 * (0.7 + 0.5 * fine);
+float rockMask = smoothstep(0.18, 0.45, slope + (detail - 0.5) * 0.15);
+float3 col = lerp(soil, rock, rockMask);
+// snow / frost on high flat ground
+float snowMask = Snow * smoothstep(0.35, 0.05, slope) * smoothstep(60.0 - Snow * 200.0, 220.0, p.z + (detail - 0.5) * 60.0);
+col = lerp(col, float3(0.92, 0.95, 1.0), snowMask);
+// lava fissures glow
+float crack = pow(1.0 - abs(snoise(p * 0.08 + Seed)), 14.0);
+float3 emis = Glow * float3(1.0, 0.35, 0.08) * crack * 6.0 * (0.5 + 0.5 * sin(p.x * 0.3 + p.y * 0.2));
+col = lerp(col, float3(0.08, 0.03, 0.02), Glow * crack * 0.8);
+Rough = lerp(0.95, 0.6, rockMask) - snowMask * 0.2;
+Emissive = emis;
+return col;
+"""
+    node = custom(mat, code, ["WorldPos", "Normal", "C0", "C1", "C2", "Profile", "Seed", "Snow", "Glow"], -300, 0)
+    outs = []
+    for name, typ_ in (("Rough", unreal.CustomMaterialOutputType.CMOT_FLOAT1), ("Emissive", unreal.CustomMaterialOutputType.CMOT_FLOAT3)):
+        o = unreal.CustomOutput(); o.set_editor_property("output_name", name); o.set_editor_property("output_type", typ_); outs.append(o)
+    node.set_editor_property("additional_outputs", outs)
+    MEL.connect_material_expressions(wp, "", node, "WorldPos")
+    MEL.connect_material_expressions(nrm, "", node, "Normal")
+    for n, nm in ((c0, "C0"), (c1, "C1"), (c2, "C2"), (profile, "Profile"), (seed, "Seed"), (snow, "Snow"), (glow, "Glow")):
+        MEL.connect_material_expressions(n, "", node, nm)
+    MEL.connect_material_property(node, "", unreal.MaterialProperty.MP_BASE_COLOR)
+    MEL.connect_material_property(node, "Rough", unreal.MaterialProperty.MP_ROUGHNESS)
+    MEL.connect_material_property(node, "Emissive", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
+
+
+def build_water(mat):
+    """Flat water: translucent, fresnel-brightened, slow animated ripples in the normal."""
+    color = vec_param(mat, "Color", (0.04, 0.16, 0.3, 1), -700, 0)
+    time = MEL.create_material_expression(mat, unreal.MaterialExpressionTime, -700, 150)
+    wp = MEL.create_material_expression(mat, unreal.MaterialExpressionWorldPosition, -700, -250)
+    cam = MEL.create_material_expression(mat, unreal.MaterialExpressionCameraVectorWS, -700, -400)
+    code = NOISE_HLSL + """
+float3 p = WorldPos / 100.0;
+float w1 = snoise(float3(p.x * 0.08, p.y * 0.08, Time * 0.15));
+float w2 = snoise(float3(p.x * 0.35 + 3.0, p.y * 0.35, Time * 0.4));
+float3 n = normalize(float3(w1 * 0.08 + w2 * 0.04, w1 * 0.06 - w2 * 0.05, 1.0));
+float fres = pow(1.0 - saturate(dot(normalize(View), n)), 4.0);
+Alpha = lerp(0.82, 0.97, fres);
+NormalOut = n;
+return Color * (0.8 + 0.4 * fres) + float3(0.5, 0.6, 0.7) * fres * 0.25;
+"""
+    node = custom(mat, code, ["WorldPos", "View", "Color", "Time"], -300, 0)
+    outs = []
+    for name, typ_ in (("Alpha", unreal.CustomMaterialOutputType.CMOT_FLOAT1), ("NormalOut", unreal.CustomMaterialOutputType.CMOT_FLOAT3)):
+        o = unreal.CustomOutput(); o.set_editor_property("output_name", name); o.set_editor_property("output_type", typ_); outs.append(o)
+    node.set_editor_property("additional_outputs", outs)
+    MEL.connect_material_expressions(wp, "", node, "WorldPos")
+    MEL.connect_material_expressions(cam, "", node, "View")
+    MEL.connect_material_expressions(color, "", node, "Color")
+    MEL.connect_material_expressions(time, "", node, "Time")
+    mat.set_editor_property("blend_mode", unreal.BlendMode.BLEND_TRANSLUCENT)
+    mat.set_editor_property("translucency_lighting_mode", unreal.TranslucencyLightingMode.TLM_SURFACE_PER_PIXEL_LIGHTING)
+    MEL.connect_material_property(node, "", unreal.MaterialProperty.MP_BASE_COLOR)
+    MEL.connect_material_property(node, "Alpha", unreal.MaterialProperty.MP_OPACITY)
+    MEL.connect_material_property(node, "NormalOut", unreal.MaterialProperty.MP_NORMAL)
+    rough = MEL.create_material_expression(mat, unreal.MaterialExpressionConstant, -300, 400)
+    rough.set_editor_property("r", 0.08)
+    MEL.connect_material_property(rough, "", unreal.MaterialProperty.MP_ROUGHNESS)
+    spec = MEL.create_material_expression(mat, unreal.MaterialExpressionConstant, -300, 500)
+    spec.set_editor_property("r", 1.0)
+    MEL.connect_material_property(spec, "", unreal.MaterialProperty.MP_SPECULAR)
 
 
 def build_rings(mat):
@@ -528,6 +619,8 @@ ensure_material("M_Planet", build_planet)
 ensure_material("M_Sky", build_sky)
 ensure_material("M_Tunnel", build_tunnel)
 ensure_material("M_Flash", build_flash)
+ensure_material("M_Terrain", build_terrain)
+ensure_material("M_Water", build_water)
 ensure_map()
 ensure_audio()
 log("done")

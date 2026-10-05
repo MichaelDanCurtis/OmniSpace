@@ -53,7 +53,7 @@ void OmniCockpit::Build(AActor* Owner, USceneComponent* Parent)
 	const FLinearColor Trim(0.22f, 0.21f, 0.2f);
 	const FLinearColor Cyan(0.25f, 1.4f, 2.2f);
 	const FLinearColor Amber(2.6f, 1.3f, 0.35f);
-	const FLinearColor Screen(0.05f, 0.25f, 0.4f);
+	const FLinearColor Screen(0.015f, 0.06f, 0.11f);
 
 	// Camera sits at the origin looking +X with a 70 deg horizontal FOV (~42 deg vertical), so
 	// anything that should be on screen must lie within ~35 deg sideways and ~21 deg up/down.

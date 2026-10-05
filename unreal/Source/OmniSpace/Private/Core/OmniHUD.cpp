@@ -12,6 +12,8 @@
 #include "Kismet/GameplayStatics.h"
 #include "Galaxy/GalaxySubsystem.h"
 #include "Forge/ForgeSubsystem.h"
+#include "World/SurfaceTile.h"
+#include "Ship/RoverPawn.h"
 
 namespace
 {
@@ -75,9 +77,23 @@ void AOmniHUD::Circle(float X, float Y, float R, const FLinearColor& C, int32 Se
 void AOmniHUD::DrawHUD()
 {
 	Super::DrawHUD();
-	AShipPawn* Ship = Cast<AShipPawn>(UGameplayStatics::GetPlayerPawn(GetWorld(), 0));
-	if (!Ship || !Canvas) return;
+	if (!Canvas) return;
 	UFont* Font = GEngine->GetMediumFont();
+	if (ARoverPawn* Rover = Cast<ARoverPawn>(UGameplayStatics::GetPlayerPawn(GetWorld(), 0)))
+	{
+		const float W = Canvas->SizeX, H = Canvas->SizeY;
+		const float U = FMath::Clamp(H / 900.f, 0.7f, 1.6f);
+		DrawText(TEXT("ROVER"), White, 28 * U, 24 * U, Font, 1.9f * U);
+		DrawText(FString::Printf(TEXT("SPEED %.0f m/s"), Rover->SpeedMS), Cyan, 28 * U, 60 * U, Font, 1.2f * U);
+		DrawText(FString::Printf(TEXT("SHIP %s"), *FmtDist(Rover->DistanceToShipM)), Rover->DistanceToShipM < 25 ? Green : Amber, 28 * U, 84 * U, Font, 1.1f * U);
+		const int32 N = FMath::Min(4, Rover->Messages.Num());
+		float Y = H - 40 * U - 19 * U * N;
+		for (int32 i = Rover->Messages.Num() - N; i < Rover->Messages.Num(); i++) { DrawText(Rover->Messages[i], FLinearColor(0.85f, 0.92f, 1.f, 0.95f), 28 * U, Y, Font, 0.95f * U); Y += 19 * U; }
+		DrawText(TEXT("W/S drive   A/D steer   Space brake   mouse look   G board the ship (within 25 m)"), FLinearColor(0.5f, 0.6f, 0.7f, 0.8f), 28 * U, H - 16 * U, Font, 0.8f * U);
+		return;
+	}
+	AShipPawn* Ship = Cast<AShipPawn>(UGameplayStatics::GetPlayerPawn(GetWorld(), 0));
+	if (!Ship) return;
 	const float W = Canvas->SizeX, H = Canvas->SizeY;
 	const float U = FMath::Clamp(H / 900.f, 0.7f, 1.6f); // ui scale
 	ASystemDirector* D = Ship->GetDirector();
@@ -94,7 +110,7 @@ void AOmniHUD::DrawHUD()
 		Y += 58 * U;
 		if (D) DrawText(D->GetSystem().Name.ToUpper() + TEXT(" SYSTEM"), Cyan, X, Y, Font, 1.35f * U);
 		if (D) DrawText(FString::Printf(TEXT("%s  -  %s"), *D->GetSystem().Profile.Faction, *D->GetSystem().Profile.Economy), Grey, X, Y + 24 * U, Font, 0.95f * U);
-		static const TCHAR* ModeNames[] = {TEXT("NORMAL FLIGHT"), TEXT("SUPERCRUISE"), TEXT("HYPERSPACE"), TEXT("DOCKING"), TEXT("DOCKED"), TEXT("LAUNCHING"), TEXT("DESTROYED")};
+		static const TCHAR* ModeNames[] = {TEXT("NORMAL FLIGHT"), TEXT("SUPERCRUISE"), TEXT("HYPERSPACE"), TEXT("DOCKING"), TEXT("DOCKED"), TEXT("LAUNCHING"), TEXT("DESTROYED"), TEXT("ATMOSPHERIC FLIGHT"), TEXT("LANDED")};
 		DrawText(ModeNames[static_cast<int>(Ship->Mode)], Ship->Mode == EFlightMode::Supercruise ? Amber : Cyan, X, Y + 46 * U, Font, 1.1f * U);
 		float SY = Y + 72 * U;
 		auto Status = [&](const FString& S, const FLinearColor& C) { DrawText(S, C, X, SY, Font, 1.0f * U); SY += 20 * U; };
@@ -105,6 +121,8 @@ void AOmniHUD::DrawHUD()
 		if (!Ship->DockingStationId.IsEmpty() && Ship->Mode == EFlightMode::Normal) Status(FString::Printf(TEXT("DOCKING GRANTED  BAY %d"), Ship->DockingBay + 1), Green);
 		if (Ship->Mode == EFlightMode::Docked) Status(TEXT("DOCKED  -  L TO LAUNCH"), Green);
 		if (Ship->BoostTimer > 0) Status(TEXT("BOOST"), Amber);
+		if (Ship->Mode == EFlightMode::Surface) Status(FString::Printf(TEXT("ALTITUDE %s   %s"), *FmtDist(FMath::Max(0.0, Ship->AltitudeM)), Ship->Tile ? *Ship->Tile->GetBody().Name.ToUpper() : TEXT("")), Cyan);
+		if (Ship->Mode == EFlightMode::Landed) Status(TEXT("G DEPLOY ROVER   L LIFT OFF"), Green);
 	}
 
 	// ---------------------------------------------------------------- left: speed / throttle
@@ -323,6 +341,6 @@ void AOmniHUD::DrawHUD()
 			DrawText(Ship->Messages[i], FLinearColor(0.85f, 0.92f, 1.f, 0.95f - Age * 0.15f), 28 * U, Y, Font, 0.95f * U);
 			Y += 19 * U;
 		}
-		DrawText(TEXT("W/S throttle   mouse/arrows steer   A/D roll   Q/E R/F thrusters   Tab boost   J supercruise   T target   N jump target   B plot route   M map   H jump   P autopilot   L dock/launch   Z FA   X stop   C 75%"), FLinearColor(0.5f, 0.6f, 0.7f, 0.8f), 28 * U, H - 16 * U, Font, 0.8f * U);
+		DrawText(TEXT("W/S throttle   mouse/arrows steer   A/D roll   Q/E R/F thrusters   Tab boost   J supercruise   T target   N jump target   B plot route   M map   H jump   P autopilot   L dock/land/launch   G rover   Z FA   X stop   C 75%"), FLinearColor(0.5f, 0.6f, 0.7f, 0.8f), 28 * U, H - 16 * U, Font, 0.8f * U);
 	}
 }

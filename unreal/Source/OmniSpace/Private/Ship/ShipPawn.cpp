@@ -1,6 +1,7 @@
 #include "Ship/ShipPawn.h"
 #include "Ship/Cockpit.h"
 #include "Ship/ShipAudio.h"
+#include "World/SurfaceTile.h"
 #include "Core/OmniGameMode.h"
 #include "Galaxy/GalaxySubsystem.h"
 #include "World/OmniAssets.h"
@@ -138,6 +139,7 @@ void AShipPawn::SetupPlayerInputComponent(UInputComponent* IC)
 	IC->BindKey(EKeys::LeftMouseButton, IE_Pressed, this, &AShipPawn::OnMouseLock);
 	IC->BindKey(EKeys::P, IE_Pressed, this, &AShipPawn::OnToggleAutopilot);
 	IC->BindKey(EKeys::N, IE_Pressed, this, &AShipPawn::OnCycleJump);
+	IC->BindKey(EKeys::G, IE_Pressed, this, &AShipPawn::OnRover);
 	IC->BindKey(EKeys::B, IE_Pressed, this, &AShipPawn::OnCycleFar);
 	IC->BindKey(EKeys::M, IE_Pressed, this, &AShipPawn::OnToggleMap);
 	IC->BindKey(EKeys::Seven, IE_Pressed, this, &AShipPawn::OnDebugSky);
@@ -479,6 +481,7 @@ void AShipPawn::AdvanceRoute()
 
 bool AShipPawn::EngageJump()
 {
+	if (Mode == EFlightMode::Surface || Mode == EFlightMode::Landed) { Msg(TEXT("Leave the planet first (climb above 3 km)")); return false; }
 	if (Mode != EFlightMode::Normal && Mode != EFlightMode::Supercruise) return false;
 	if (JumpTargetId.IsEmpty()) { Msg(TEXT("No hyperspace destination (press N to pick a nearby star)")); return false; }
 	if (FsdKind != EFsdKind::None) { CancelFsd(TEXT("FSD charge cancelled")); return false; }
@@ -545,6 +548,154 @@ void AShipPawn::FlyHyperspace(float Dt)
 		FlashAmount = 1.f;
 		GM->CompleteJump(); // -> EnterSystem(..., true): places us near the star in supercruise
 		AdvanceRoute();
+	}
+}
+
+void AShipPawn::OnDock()
+{
+	if (Mode == EFlightMode::Docked) { Launch(); return; }
+	if (Mode == EFlightMode::Landed) { Mode = EFlightMode::Surface; Velocity = FVector(0, 0, 12); Throttle = 0; Msg(TEXT("Lift-off")); return; }
+	if (Mode == EFlightMode::Normal || Mode == EFlightMode::Supercruise)
+	{
+		// a planet target close by means "land"; otherwise "dock"
+		if (Director && !TargetId.IsEmpty())
+		{
+			const FString Kind = Director->GetEntityKind(TargetId);
+			if (Kind == TEXT("planet") || Kind == TEXT("moon")) { BeginLanding(); return; }
+		}
+		RequestDocking();
+	}
+}
+
+void AShipPawn::OnRover()
+{
+	AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode());
+	if (!GM) return;
+	if (Mode == EFlightMode::Landed) GM->DeployRover();
+	else Msg(TEXT("Land first (L near a planet, then set down) to deploy the rover"));
+}
+
+bool AShipPawn::BeginLanding()
+{
+	AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode());
+	if (!GM || !Director || TargetId.IsEmpty()) return false;
+	FVector TP; double TR;
+	if (!Director->GetEntityPos(TargetId, TP, TR)) return false;
+	const FBodyData* B = Director->GetSystem().FindBody(TargetId);
+	if (!B) { Msg(TEXT("You can only land on planets and moons")); return false; }
+	if (B->IsGiant()) { Msg(FString::Printf(TEXT("%s has no surface to land on"), *B->Name)); if (Audio) Audio->Play(TEXT("deny")); return false; }
+	const double Dist = FVector::Dist(TP, Director->GetShipUniversePos()) - TR;
+	if (Dist > TR * 2.5) { Msg(FString::Printf(TEXT("Too far from %s to land (%s above the surface; get within %s)"), *B->Name, *FString::Printf(TEXT("%.0f km"), Dist / 1000), *FString::Printf(TEXT("%.0f km"), TR * 2.5 / 1000))); if (Audio) Audio->Play(TEXT("deny")); return false; }
+	if (Mode == EFlightMode::Supercruise) DropFromSupercruise(true);
+	bAutopilot = false;
+	FsdKind = EFsdKind::None;
+	FlashAmount = 1.f;
+	Msg(FString::Printf(TEXT("Landing approach: %s"), *B->Name));
+	if (Audio) Audio->Play(TEXT("chime"), 0.7f);
+	// pick the landing site from where we are relative to the planet: same approach, same site
+	const FVector Dir = (Director->GetShipUniversePos() - TP).GetSafeNormal();
+	GM->EnterSurface(TargetId, FVector2D(FMath::Atan2(Dir.Y, Dir.X) / (2 * PI) + 0.5, FMath::Asin(FMath::Clamp(Dir.Z, -1.0, 1.0)) / PI + 0.5));
+	return true;
+}
+
+void AShipPawn::StartDescent(ASurfaceTile* InTile)
+{
+	Tile = InTile;
+	Mode = EFlightMode::Surface;
+	const double Pad = Tile ? Tile->HeightAt(0, 0) : 0;
+	SurfacePos = FVector(-2500.0, 0, Pad + 1800.0) * 100.0; // 2.5 km out, 1.8 km up, flying toward the pad
+	SetActorLocation(SurfacePos);
+	Orientation = FRotationMatrix::MakeFromXZ(FVector(1, 0, -0.12), FVector::UpVector).ToQuat();
+	SetActorRotation(Orientation);
+	Velocity = FVector(140, 0, -15);
+	Throttle = 0.4;
+	LastThrottleInput = Time;
+	bGear = true;
+	AngVel = FVector::ZeroVector;
+	Msg(TEXT("Atmospheric flight: W/S throttle, R/F climb, L to set down on the pad. Climb above 3 km to leave."));
+}
+
+void AShipPawn::EndSurface()
+{
+	Tile = nullptr;
+	SurfacePos = FVector::ZeroVector;
+	SetActorLocation(FVector::ZeroVector);
+	bGear = false;
+}
+
+void AShipPawn::FlySurface(float Dt)
+{
+	if (!Tile) { Mode = EFlightMode::Normal; return; }
+	double K = FMath::Exp(-Dt * 1.6);
+	Stick *= K;
+	double Pitch = Clamp(-Stick.Y + InPitch, -1, 1);
+	double Yaw = Clamp(Stick.X + InYaw, -1, 1);
+	double Roll = InRoll;
+	// flight assist keeps the wings level when the pilot isn't rolling
+	if (bFlightAssist && FMath::Abs(InRoll) < 0.05)
+	{
+		const FVector Right = Orientation.GetRightVector();
+		Roll = Clamp(-Right.Z * 2.5, -0.6, 0.6);
+	}
+	Rotate(Dt, Pitch, Yaw, Roll, FVector(0.7, 0.45, 1.4));
+	// keep the nose from pitching too far: a ship in atmosphere, not a space loop
+	const double G = Tile->Gravity();
+	FVector Local = Orientation.UnrotateVector(Velocity);
+	const double FwdTarget = Throttle * MaxSpeed * 0.8;
+	if (bFlightAssist)
+	{
+		Local.X += Clamp(FwdTarget - Local.X, -120 * Dt, 120 * Dt);
+		Local.Y += Clamp(InStrafe * 60 - Local.Y, -80 * Dt, 80 * Dt);
+		Velocity = Orientation.RotateVector(Local);
+		// vertical: thrusters hold altitude (cancel gravity) and climb/descend with R/F
+		const double VzTarget = InVert * 45.0;
+		Velocity.Z += Clamp(VzTarget - Velocity.Z, -60 * Dt, 60 * Dt);
+	}
+	else
+	{
+		Local.X += Throttle * 120 * Dt;
+		Local.Y += InStrafe * 60 * Dt;
+		Velocity = Orientation.RotateVector(Local);
+		Velocity.Z += (InVert * 25.0 - G) * Dt;
+	}
+	// drag in atmosphere
+	if (Tile->HasAtmosphere()) Velocity *= FMath::Exp(-Dt * 0.08);
+	SurfacePos += Velocity * Dt * 100.0;
+	// terrain
+	const double Ground = Tile->HeightAt(SurfacePos.X / 100.0, SurfacePos.Y / 100.0);
+	const double Water = Tile->WaterLevel();
+	const double Floor = FMath::Max(Ground, Water);
+	AltitudeM = SurfacePos.Z / 100.0 - Floor;
+	const double Clearance = 6.0; // belly height on the gear
+	if (AltitudeM < Clearance)
+	{
+		const double Vz = Velocity.Z;
+		const double Vh = FVector(Velocity.X, Velocity.Y, 0).Size();
+		SurfacePos.Z = (Floor + Clearance) * 100.0;
+		const FVector N = Tile->NormalAt(SurfacePos.X / 100.0, SurfacePos.Y / 100.0);
+		const bool bFlat = N.Z > 0.93 && Ground > Water;
+		if (Vz > -10 && Vh < 18 && bFlat)
+		{
+			Mode = EFlightMode::Landed;
+			Velocity = FVector::ZeroVector;
+			AngVel = FVector::ZeroVector;
+			Throttle = 0;
+			Orientation = FRotationMatrix::MakeFromXZ(FVector::VectorPlaneProject(Orientation.GetForwardVector(), N).GetSafeNormal(), N).ToQuat();
+			Msg(TEXT("Touchdown. G deploys the rover, L lifts off."));
+			if (Audio) Audio->Play(TEXT("dock_clunk"), 1.f);
+		}
+		else
+		{
+			Impact(N, Ground > Water ? 1.0 : 0.3);
+			if (Velocity.Z < 0) Velocity.Z = FMath::Abs(Velocity.Z) * 0.3 + 2.0;
+			if (!bFlat && Vz > -10 && Vh < 18) Msg(TEXT("Too steep to land here - find flat ground (the pad at the landing site is level)"));
+		}
+	}
+	SetActorLocation(SurfacePos);
+	// ceiling: leave the surface
+	if (AltitudeM > 3000.0)
+	{
+		if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode())) GM->LeaveSurface();
 	}
 }
 
@@ -921,6 +1072,12 @@ void AShipPawn::Tick(float Dt)
 	case EFlightMode::Normal: FlyNormal(Dt); break;
 	case EFlightMode::Supercruise: FlySupercruise(Dt); break;
 	case EFlightMode::Hyperspace: FlyHyperspace(Dt); break;
+	case EFlightMode::Surface: FlySurface(Dt); break;
+	case EFlightMode::Landed:
+		SetActorLocation(SurfacePos);
+		SetActorRotation(Orientation);
+		if (InThrottle > 0 || InVert > 0) { Mode = EFlightMode::Surface; Velocity = FVector(0, 0, 10); Msg(TEXT("Lift-off")); }
+		break;
 	case EFlightMode::Docking: FlyDocking(Dt); break;
 	case EFlightMode::Launching: FlyLaunch(Dt); break;
 	case EFlightMode::Docked:
@@ -963,5 +1120,5 @@ void AShipPawn::Tick(float Dt)
 	}
 	if (Audio) Audio->Update(Dt);
 	if (Tunnel && Mode != EFlightMode::Hyperspace && Tunnel->IsVisible()) { Tunnel->SetVisibility(false); Tunnel->SetHiddenInGame(true); }
-	SetActorLocation(FVector::ZeroVector);
+	if (Mode != EFlightMode::Surface && Mode != EFlightMode::Landed) SetActorLocation(FVector::ZeroVector);
 }

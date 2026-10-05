@@ -35,6 +35,16 @@ public:
 	/** Cartography log lines streamed by the Forge for the system being jumped to. */
 	UPROPERTY(BlueprintReadOnly, Category = "OmniSpace") TArray<FString> JumpLog;
 
+	/** Planetary landing tile: build the surface for a body and move the ship onto it. */
+	void EnterSurface(const FString& BodyId, const FVector2D& Site);
+	void LeaveSurface();
+	void DeployRover();
+	void BoardShip();
+	UPROPERTY(BlueprintReadOnly, Category = "OmniSpace") TObjectPtr<class ASurfaceTile> Tile;
+	UPROPERTY(BlueprintReadOnly, Category = "OmniSpace") TObjectPtr<class ARoverPawn> Rover;
+	FString SurfaceBodyId;
+	FVector SurfaceApproachDir = FVector::UpVector;
+
 	/** Hyperspace: ask the Forge for the destination; the ship completes the jump when ready. */
 	void BeginJump(const FStarDescriptor& Dest);
 	bool IsJumpReady() const { return bJumpReady; }

@@ -14,7 +14,7 @@ class ASystemDirector;
 class AStationActor;
 
 UENUM(BlueprintType)
-enum class EFlightMode : uint8 { Normal, Supercruise, Hyperspace, Docking, Docked, Launching, Destroyed };
+enum class EFlightMode : uint8 { Normal, Supercruise, Hyperspace, Docking, Docked, Launching, Destroyed, Surface, Landed };
 
 UENUM(BlueprintType)
 enum class EFsdKind : uint8 { None, Supercruise, Jump };
@@ -68,6 +68,12 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Ship") bool bShowMap = false;
 	UPROPERTY(BlueprintReadOnly, Category = "Ship") double LastImpactTime = -100;
 	UPROPERTY() TObjectPtr<class UShipAudio> Audio;
+	/** Landing tile we are flying over (set by the game mode while on the surface). */
+	UPROPERTY() TObjectPtr<class ASurfaceTile> Tile;
+	UPROPERTY(BlueprintReadOnly, Category = "Ship") double AltitudeM = 0;
+	UPROPERTY(BlueprintReadOnly, Category = "Ship") bool bGear = false;
+	/** World position (cm) on the tile; the floating origin is paused while on the surface. */
+	FVector SurfacePos = FVector::ZeroVector;
 
 	UFUNCTION(BlueprintCallable, Category = "Ship") void Msg(const FString& Text);
 	UFUNCTION(BlueprintCallable, Category = "Ship") void SetTarget(const FString& Id);
@@ -76,6 +82,13 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Ship") void RequestDocking();
 	UFUNCTION(BlueprintCallable, Category = "Ship") void Launch();
 	UFUNCTION(BlueprintCallable, Category = "Ship") void ToggleAutopilot();
+	/** Land on the targeted planet (must be close); returns false with a message if not possible. */
+	UFUNCTION(BlueprintCallable, Category = "Ship") bool BeginLanding();
+	/** Called by the game mode once the tile exists: start the descent. */
+	void StartDescent(class ASurfaceTile* InTile);
+	/** Called by the game mode when we leave the tile. */
+	void EndSurface();
+	void FlySurface(float Dt);
 	UFUNCTION(BlueprintCallable, Category = "Ship") void CycleJumpTarget();
 	/** Cycle through stars beyond jump range (up to 60 ly) and plot a multi-jump route. */
 	UFUNCTION(BlueprintCallable, Category = "Ship") void CycleFarTarget();
@@ -137,7 +150,8 @@ protected:
 	void OnCruiseThrottle();
 	void OnToggleFA();
 	void OnToggleSupercruise() { ToggleSupercruise(); }
-	void OnDock() { if (Mode == EFlightMode::Docked) Launch(); else RequestDocking(); }
+	void OnDock();
+	void OnRover();
 	void OnCycleTarget() { CycleTarget(); }
 	void OnMouseLock();
 	void OnToggleAutopilot() { ToggleAutopilot(); }

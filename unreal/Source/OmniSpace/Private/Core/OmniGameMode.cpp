@@ -1,6 +1,11 @@
 #include "Core/OmniGameMode.h"
 #include "Core/OmniHUD.h"
 #include "Ship/ShipPawn.h"
+#include "Ship/RoverPawn.h"
+#include "World/SurfaceTile.h"
+#include "World/SkyActor.h"
+#include "Engine/DirectionalLight.h"
+#include "Components/DirectionalLightComponent.h"
 #include "World/SystemDirector.h"
 #include "Forge/ForgeSubsystem.h"
 #include "Galaxy/GalaxySubsystem.h"
@@ -8,6 +13,7 @@
 #include "Engine/World.h"
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/WorldSettings.h"
+#include "EngineUtils.h"
 #include "Engine/GameInstance.h"
 #include "Misc/Parse.h"
 #include "Misc/CommandLine.h"
@@ -180,4 +186,89 @@ void AOmniGameMode::EnterSystem(const FStarSystemData& System, bool bArrivingFro
 		Ship->Throttle = 0;
 	}
 	Ship->Msg(FString::Printf(TEXT("%s - %s - %s"), *System.Name, *System.Profile.Faction, *System.Profile.Economy));
+}
+
+
+// ---------------------------------------------------------------- landing tiles
+void AOmniGameMode::EnterSurface(const FString& BodyId, const FVector2D& Site)
+{
+	AShipPawn* Ship = Cast<AShipPawn>(UGameplayStatics::GetPlayerPawn(GetWorld(), 0));
+	if (!Director || !Ship || Tile) return;
+	const FBodyData* B = Director->GetSystem().FindBody(BodyId);
+	if (!B) return;
+	FVector BP; double BR;
+	Director->GetEntityPos(BodyId, BP, BR);
+	SurfaceBodyId = BodyId;
+	SurfaceApproachDir = (Director->GetShipUniversePos() - BP).GetSafeNormal();
+	Director->SetSystemHidden(true);
+	FActorSpawnParameters P;
+	P.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	Tile = GetWorld()->SpawnActor<ASurfaceTile>(ASurfaceTile::StaticClass(), FTransform::Identity, P);
+	const FLinearColor SunC = Director->GetSystem().Star.LinearColor().Desaturate(0.4f);
+	Tile->Build(*B, Site, SunC, 38.0);
+	// sun: a fixed afternoon elevation from the site azimuth; the director re-aims it on return
+	if (ADirectionalLight* Sun = Director->GetSunLight())
+		Sun->SetActorRotation(FRotator(-38.0, Site.X * 360.0, 0));
+	Ship->StartDescent(Tile);
+	UE_LOG(LogOmniSpace, Log, TEXT("Surface: %s at site (%.2f, %.2f)"), *B->Name, Site.X, Site.Y);
+}
+
+void AOmniGameMode::LeaveSurface()
+{
+	AShipPawn* Ship = Cast<AShipPawn>(UGameplayStatics::GetPlayerPawn(GetWorld(), 0));
+	if (!Director || !Tile) return;
+	if (Rover) { Rover->Destroy(); Rover = nullptr; }
+	Tile->Destroy();
+	Tile = nullptr;
+	Director->SetSystemHidden(false);
+	FVector BP; double BR;
+	Director->GetEntityPos(SurfaceBodyId, BP, BR);
+	if (Ship)
+	{
+		Ship->EndSurface();
+		Ship->FlashAmount = 1.f;
+		// back in orbit above the site, nose along the horizon, drifting outward
+		const FVector Up = SurfaceApproachDir;
+		const FVector Pos = BP + Up * (BR * 1.35 + 40000.0);
+		const FVector Side = FVector::CrossProduct(Up, FVector::UpVector).GetSafeNormal();
+		Ship->Place(Pos, Pos + Side * 1e6 + Up * 2e5);
+		Ship->Mode = EFlightMode::Normal;
+		Ship->Velocity = (Side * 0.9 + Up * 0.3).GetSafeNormal() * 150.0;
+		Ship->Throttle = 0.4;
+		Ship->Msg(FString::Printf(TEXT("Orbit regained above %s"), *Director->GetEntityName(SurfaceBodyId)));
+	}
+	SurfaceBodyId.Empty();
+}
+
+void AOmniGameMode::DeployRover()
+{
+	AShipPawn* Ship = Cast<AShipPawn>(UGameplayStatics::GetPlayerPawn(GetWorld(), 0));
+	APlayerController* PC = UGameplayStatics::GetPlayerController(GetWorld(), 0);
+	if (!Ship || !Tile || !PC || Ship->Mode != EFlightMode::Landed) return;
+	if (!Rover)
+	{
+		FActorSpawnParameters P;
+		P.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		Rover = GetWorld()->SpawnActor<ARoverPawn>(ARoverPawn::StaticClass(), FTransform::Identity, P);
+	}
+	const FQuat Q = Ship->GetActorQuat();
+	const FVector Drop = Ship->GetActorLocation() + Q.GetRightVector() * 1800.0; // 18 m to starboard
+	Rover->Deploy(Tile, Ship, FVector(Drop.X, Drop.Y, Drop.Z), Q);
+	PC->Possess(Rover);
+	Rover->Msg(TEXT("Rover deployed"));
+}
+
+void AOmniGameMode::BoardShip()
+{
+	AShipPawn* Ship = Cast<AShipPawn>(UGameplayStatics::GetPlayerPawn(GetWorld(), 0)) ? nullptr : nullptr;
+	APlayerController* PC = UGameplayStatics::GetPlayerController(GetWorld(), 0);
+	if (!PC || !Rover) return;
+	AShipPawn* TheShip = nullptr;
+	for (TActorIterator<AShipPawn> It(GetWorld()); It; ++It) { TheShip = *It; break; }
+	if (!TheShip) return;
+	PC->Possess(TheShip);
+	Rover->Destroy();
+	Rover = nullptr;
+	TheShip->Msg(TEXT("Back aboard. L or W to lift off."));
+	(void)Ship;
 }

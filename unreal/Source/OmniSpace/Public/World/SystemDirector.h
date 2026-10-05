@@ -42,6 +42,8 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "OmniSpace|System")
 	void Clear();
+	/** Hide/show every system actor (star, bodies, stations) while the pilot is on a landing tile. */
+	void SetSystemHidden(bool bHidden);
 
 	/** Universe position of the ship (metres). The director owns it. */
 	UFUNCTION(BlueprintPure, Category = "OmniSpace|System")
@@ -55,6 +57,7 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "OmniSpace|System")
 	const FStarSystemData& GetSystem() const { return System; }
+	class ADirectionalLight* GetSunLight() const { return SunLight; }
 	/** Frame-shift streak on the sky dome. */
 	void SetSkyWarp(float Warp, const FVector& Dir);
 	/** Debug: toggle visibility of the sky dome / star. */

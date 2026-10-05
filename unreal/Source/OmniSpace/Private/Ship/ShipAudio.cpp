@@ -45,11 +45,11 @@ void UShipAudio::Update(float Dt)
 {
 	if (!Owner) return;
 	const EFlightMode M = Owner->Mode;
-	const bool bNormalish = M == EFlightMode::Normal || M == EFlightMode::Docking || M == EFlightMode::Launching;
+	const bool bNormalish = M == EFlightMode::Normal || M == EFlightMode::Docking || M == EFlightMode::Launching || M == EFlightMode::Surface;
 	const double Thr = FMath::Abs(Owner->Throttle);
 	const double SpeedN = FMath::Clamp(Owner->Velocity.Size() / Owner->MaxSpeed, 0.0, 1.5);
 	const bool bBoost = Owner->BoostTimer > 0;
-	const float TargetEngine = bNormalish ? static_cast<float>(0.18 + 0.5 * Thr + 0.25 * SpeedN + (bBoost ? 0.3 : 0)) : (M == EFlightMode::Docked ? 0.08f : 0.f);
+	const float TargetEngine = bNormalish ? static_cast<float>(0.18 + 0.5 * Thr + 0.25 * SpeedN + (bBoost ? 0.3 : 0)) : ((M == EFlightMode::Docked || M == EFlightMode::Landed) ? 0.08f : 0.f);
 	const float TargetCruise = M == EFlightMode::Supercruise ? static_cast<float>(0.5 + 0.3 * FMath::Clamp(FMath::LogX(10.0, FMath::Max(1.0, Owner->SupercruiseSpeed / 3e4)) / 7.0, 0.0, 1.0)) : 0.f;
 	const float TargetHyper = M == EFlightMode::Hyperspace ? 0.9f : 0.f;
 	const float K = 1.f - FMath::Exp(-Dt * 4.f);
@@ -76,7 +76,7 @@ void UShipAudio::Update(float Dt)
 	if (ModeI != LastMode)
 	{
 		if (M == EFlightMode::Supercruise || M == EFlightMode::Hyperspace) Play(TEXT("jump"), M == EFlightMode::Hyperspace ? 1.f : 0.6f, M == EFlightMode::Hyperspace ? 0.8f : 1.2f);
-		if (M == EFlightMode::Docked) Play(TEXT("dock_clunk"), 1.f);
+		if (M == EFlightMode::Docked || M == EFlightMode::Landed) Play(TEXT("dock_clunk"), 1.f);
 		if (M == EFlightMode::Docking) Play(TEXT("chime"), 0.7f);
 		if (LastMode == static_cast<int32>(EFlightMode::Hyperspace)) Play(TEXT("jump"), 0.8f, 1.1f);
 		LastMode = ModeI;
