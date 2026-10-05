@@ -26,6 +26,7 @@ class Job:
     finished: Optional[float] = None
     task: Optional[asyncio.Task[Any]] = None
     prefetch: bool = False
+    survey: bool = False  # no AI available: chart with the onboard survey (scripted forge) directly
 
     def public(self) -> dict[str, Any]:
         return {
@@ -54,7 +55,7 @@ class JobManager:
             return getattr(self.model_override, "label", type(self.model_override).__name__)
         return model_name() or "sdk-default"
 
-    def start(self, req: GenerateRequest) -> Job:
+    def start(self, req: GenerateRequest, survey: bool = False) -> Job:
         sid = req.star.id
         job = self.jobs.get(sid)
         if job and job.status in ("generating", "ready"):
@@ -66,6 +67,7 @@ class JobManager:
         draft.log.append(f"Stellar Forge engaged for {req.star.name}")
         job = Job(system_id=sid, draft=draft)
         job.prefetch = req.prefetch
+        job.survey = survey
         self.jobs[sid] = job
         job.task = asyncio.create_task(self._run(job))
         return job
@@ -107,6 +109,8 @@ class JobManager:
                     break
                 await asyncio.sleep(0.3)
             async with self.sem:
+                if job.survey:
+                    raise RuntimeError("AI forge unavailable; charting with the onboard survey")
                 if self.runtime_factory is not None:
                     runtime = await self.runtime_factory()
                 else:
@@ -118,9 +122,27 @@ class JobManager:
             job.status = "ready"
         except Exception as e:  # noqa: BLE001 - report every failure to the client
             log.exception("forge failed for %s", job.system_id)
-            job.status = "failed"
             job.error = f"{type(e).__name__}: {e}"[:500]
             job.draft.log.append("Forge link lost — falling back to onboard survey computer")
+            # The game must stay playable without the AI: chart the system with the scripted
+            # stand-in forge (deterministic, instant) and keep the error for the status line.
+            try:
+                from .scripted import ScriptedForgeModel
+
+                survey = ForgeRuntime(model=ScriptedForgeModel(delay=0.05), label="onboard survey")
+                old = job.draft
+                fresh = SystemDraft(star=old.star, neighbors=old.neighbors, commander=old.commander)
+                fresh.log.extend(old.log)  # keep the cartography log the pilot has already seen
+                job.draft = fresh
+                await forge_system(fresh, timeout=min(self.timeout, 60), runtime=survey)
+                system = fresh.build("onboard survey", source="procedural")
+                self.store.put(system)
+                job.status = "ready"
+                log.warning("charted %s with the onboard survey after the forge failed", job.system_id)
+            except Exception as e2:  # noqa: BLE001
+                log.exception("survey fallback failed for %s", job.system_id)
+                job.status = "failed"
+                job.error = f"{job.error} / survey: {type(e2).__name__}: {e2}"[:500]
         finally:
             if holding_lane:
                 self.prefetch_sem.release()

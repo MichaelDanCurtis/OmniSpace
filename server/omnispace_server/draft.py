@@ -393,13 +393,13 @@ class SystemDraft:
         return {"ok": True, "message": "System committed to the galactic record."}
 
     # ------------------------------------------------------------ output
-    def build(self, model: Optional[str]) -> StarSystem:
+    def build(self, model: Optional[str], source: str = "ai") -> StarSystem:
         profile = self.profile or SystemProfile(
             description=f"{CLASS_LABEL[self.star.cls]} system.", lore="Uncharted.", faction="Unclaimed",
             government="None", economy="None", security="none", population=0, danger=1,
         )
         return StarSystem(
-            id=self.star.id, name=self.star.name, source="ai", model=model, discoveredBy=self.commander,
+            id=self.star.id, name=self.star.name, source=source, model=model, discoveredBy=self.commander,
             createdAt=datetime.now(timezone.utc).isoformat(), star=self.star,
             starFlavor=self.star_flavor or CLASS_LABEL[self.star.cls], profile=profile,
             bodies=self.bodies, stations=self.stations, belts=self.belts, pois=self.pois,
