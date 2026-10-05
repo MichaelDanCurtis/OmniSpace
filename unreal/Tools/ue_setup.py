@@ -193,6 +193,47 @@ return Color * (0.75 + 0.5 * g) * (1.0 - spots * 0.35);
     MEL.connect_material_property(node, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
 
 
+def build_sky(mat):
+    seed = scalar_param(mat, "Seed", 0, -700, 150)
+    tint = vec_param(mat, "Nebula", (0.25, 0.18, 0.45, 1), -700, 300)
+    localpos = MEL.create_material_expression(mat, unreal.MaterialExpressionTransformPosition, -700, -250)
+    localpos.set_editor_property("transform_source_type", unreal.MaterialPositionTransformSource.TRANSFORMPOSSOURCE_WORLD)
+    localpos.set_editor_property("transform_type", unreal.MaterialPositionTransformSource.TRANSFORMPOSSOURCE_LOCAL)
+    wp = MEL.create_material_expression(mat, unreal.MaterialExpressionWorldPosition, -900, -250)
+    MEL.connect_material_expressions(wp, "", localpos, "")
+    code = NOISE_HLSL + """
+float3 d = normalize(LocalPos);
+// galactic plane: tilted band
+float3 gn = normalize(float3(0.32, 0.18, 0.93));
+float band = abs(dot(d, gn));
+float3 gd = d + Seed;
+float dust = fbm(gd * 2.2, 5) * 0.5 + 0.5;
+float lanes = fbm(gd * 7.0 + 3.0, 4) * 0.5 + 0.5;
+float mw = smoothstep(0.42, 0.0, band) * (0.35 + 0.65 * dust);
+mw *= 1.0 - 0.75 * smoothstep(0.35, 0.75, lanes) * smoothstep(0.25, 0.0, band);
+float3 col = float3(0.78, 0.72, 0.62) * mw * 0.22;
+// faint nebulae
+float neb = pow(saturate(fbm(gd * 1.3 + 11.0, 5) * 0.5 + 0.5), 3.0);
+col += Nebula * neb * 0.35;
+col += float3(0.12, 0.25, 0.4) * pow(saturate(fbm(gd * 1.7 - 5.0, 4) * 0.5 + 0.5), 4.0) * 0.5;
+// stars: three magnitude layers (sparse bright, medium, dense faint); more in the band
+float dens = 1.0 + 1.5 * smoothstep(0.5, 0.0, band);
+float s = starLayer(d, 24.0, 0.08 * dens, Seed) * 2.6;
+s += starLayer(d, 70.0, 0.22 * dens, Seed + 9.0) * 1.1;
+s += starLayer(d, 180.0, 0.35 * dens, Seed + 31.0) * 0.45;
+float3 tintv = lerp(float3(0.75, 0.82, 1.0), float3(1.0, 0.85, 0.65), hash13(floor(d * 90.0 + Seed)));
+col += tintv * s;
+return col;
+"""
+    node = custom(mat, code, ["LocalPos", "Seed", "Nebula"], -300, 0)
+    MEL.connect_material_expressions(localpos, "", node, "LocalPos")
+    MEL.connect_material_expressions(seed, "", node, "Seed")
+    MEL.connect_material_expressions(tint, "", node, "Nebula")
+    mat.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_UNLIT)
+    mat.set_editor_property("two_sided", True)
+    MEL.connect_material_property(node, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
+
+
 def build_rings(mat):
     color = vec_param(mat, "Color", (0.8, 0.78, 0.74, 1), -700, 0)
     opacity = scalar_param(mat, "Opacity", 0.7, -700, 150)
@@ -269,5 +310,6 @@ ensure_material("M_Emissive", build_emissive)
 ensure_material("M_Star", build_star)
 ensure_material("M_Rings", build_rings)
 ensure_material("M_Planet", build_planet)
+ensure_material("M_Sky", build_sky)
 ensure_map()
 log("done")

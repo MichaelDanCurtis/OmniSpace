@@ -82,6 +82,7 @@ protected:
 	UPROPERTY() TArray<FUniverseEntity> Entities;
 	UPROPERTY() TObjectPtr<AStarActor> Star;
 	UPROPERTY() TObjectPtr<ADirectionalLight> SunLight;
+	UPROPERTY() TObjectPtr<class ASkyActor> Sky;
 	FVector ShipPos = FVector::ZeroVector;
 	double Time = 0;
 

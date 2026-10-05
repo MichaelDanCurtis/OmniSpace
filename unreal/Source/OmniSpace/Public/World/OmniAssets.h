@@ -20,6 +20,7 @@ namespace OmniAssets
 	OMNISPACE_API UMaterialInterface* RingMaterial();
 	OMNISPACE_API UMaterialInterface* HullMaterial();
 	OMNISPACE_API UMaterialInterface* EmissiveMaterial();
+	OMNISPACE_API UMaterialInterface* SkyMaterial();
 	/** Load /Game/... first, else the engine fallback. */
 	OMNISPACE_API UMaterialInterface* MaterialOr(const TCHAR* ProjectPath, const TCHAR* FallbackPath);
 	OMNISPACE_API UMaterialInstanceDynamic* MakeMID(UPrimitiveComponent* Comp, UMaterialInterface* Base, UObject* Outer);

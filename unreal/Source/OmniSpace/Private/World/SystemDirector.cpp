@@ -1,6 +1,7 @@
 #include "World/SystemDirector.h"
 #include "World/CelestialBodyActor.h"
 #include "World/StarActor.h"
+#include "World/SkyActor.h"
 #include "World/StationActor.h"
 #include "OmniSpace.h"
 #include "Engine/DirectionalLight.h"
@@ -40,6 +41,15 @@ void ASystemDirector::LoadSystem(const FStarSystemData& InSystem)
 	if (!World) return;
 	FActorSpawnParameters P;
 	P.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	// sky (one per world; the nebula tint is seeded by the system so each one feels different)
+	if (!Sky) Sky = World->SpawnActor<ASkyActor>(ASkyActor::StaticClass(), FTransform::Identity, P);
+	{
+		const uint32 H = GetTypeHash(System.Id);
+		const float Hue = (H % 360) / 360.f;
+		FLinearColor Tint = FLinearColor::MakeFromHSV8(static_cast<uint8>(Hue * 255), 140, 110);
+		Sky->Setup(static_cast<int32>(H % 100000), Tint);
+	}
 
 	// star
 	Star = World->SpawnActor<AStarActor>(AStarActor::StaticClass(), FTransform::Identity, P);

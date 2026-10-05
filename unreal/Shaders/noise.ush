@@ -52,3 +52,22 @@ float ridged(float3 p, int oct){
   for(int i=0;i<8;i++){ if(i>=oct) break; s+=a*(1.0-abs(snoise(p))); n+=a; p=p*2.1+float3(3.1,1.3,7.7); a*=0.5; }
   return s/n;
 }
+float hash13(float3 p){ p=frac(p*0.1031); p+=dot(p,p.zyx+31.32); return frac((p.x+p.y)*p.z); }
+float3 hash33(float3 p){ p=frac(p*float3(0.1031,0.1030,0.0973)); p+=dot(p,p.yxz+33.33); return frac((p.xxy+p.yxx)*p.zyx); }
+// Point stars on a 3D lattice projected onto the unit sphere: density per cell, size-weighted brightness.
+float starLayer(float3 dir, float cells, float density, float seed){
+  float3 q = dir * cells + seed;
+  float3 cell = floor(q);
+  float best = 0.0;
+  [unroll] for (int z=-1; z<=1; z++) [unroll] for (int y=-1; y<=1; y++) [unroll] for (int x=-1; x<=1; x++) {
+    float3 c = cell + float3(x,y,z);
+    float3 h = hash33(c);
+    if (h.x > density) continue;
+    float3 sp = normalize(c + h); // star direction
+    float d = distance(dir, normalize(sp));
+    float mag = 0.35 + 0.65 * hash13(c + 7.1);
+    float rad = (0.35 + 1.4 * pow(hash13(c + 3.3), 6.0)) / cells;
+    best = max(best, mag * smoothstep(rad, rad * 0.25, d));
+  }
+  return best;
+}

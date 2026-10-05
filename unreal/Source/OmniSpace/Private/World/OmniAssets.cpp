@@ -29,6 +29,7 @@ UMaterialInterface* OmniAssets::PlanetMaterial() { return MaterialOr(TEXT("/Game
 UMaterialInterface* OmniAssets::StarMaterial() { return MaterialOr(TEXT("/Game/Materials/M_Star.M_Star"), TEXT("/Engine/EngineMaterials/EmissiveMeshMaterial.EmissiveMeshMaterial")); }
 UMaterialInterface* OmniAssets::RingMaterial() { return MaterialOr(TEXT("/Game/Materials/M_Rings.M_Rings"), TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial")); }
 UMaterialInterface* OmniAssets::HullMaterial() { return MaterialOr(TEXT("/Game/Materials/M_Hull.M_Hull"), TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial")); }
+UMaterialInterface* OmniAssets::SkyMaterial() { return MaterialOr(TEXT("/Game/Materials/M_Sky.M_Sky"), TEXT("/Engine/EngineMaterials/EmissiveMeshMaterial.EmissiveMeshMaterial")); }
 UMaterialInterface* OmniAssets::EmissiveMaterial() { return MaterialOr(TEXT("/Game/Materials/M_Emissive.M_Emissive"), TEXT("/Engine/EngineMaterials/EmissiveMeshMaterial.EmissiveMeshMaterial")); }
 
 UMaterialInstanceDynamic* OmniAssets::MakeMID(UPrimitiveComponent* Comp, UMaterialInterface* Base, UObject* Outer)
