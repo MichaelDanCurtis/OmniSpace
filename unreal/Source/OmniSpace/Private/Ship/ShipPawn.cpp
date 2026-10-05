@@ -30,6 +30,17 @@ AShipPawn::AShipPawn()
 	Camera->SetupAttachment(Root);
 	Camera->FieldOfView = 70.f;
 	Camera->SetRelativeLocation(FVector(0, 0, 0));
+	// Space is mostly black, so histogram auto-exposure cranks the gain and blows out anything lit.
+	// Pin the exposure to a fixed EV100 tuned for the 8 lux "sun" the director spawns.
+	FPostProcessSettings& PP = Camera->PostProcessSettings;
+	PP.bOverride_AutoExposureMinBrightness = true;
+	PP.bOverride_AutoExposureMaxBrightness = true;
+	PP.AutoExposureMinBrightness = 1.0f;
+	PP.AutoExposureMaxBrightness = 1.0f;
+	PP.bOverride_AutoExposureBias = true;
+	PP.AutoExposureBias = 0.0f;
+	PP.bOverride_BloomIntensity = true;
+	PP.BloomIntensity = 0.35f;
 	AutoPossessPlayer = EAutoReceiveInput::Player0;
 }
 
@@ -50,19 +61,32 @@ ASystemDirector* AShipPawn::GetDirector() const { return Director; }
 void AShipPawn::SetupPlayerInputComponent(UInputComponent* IC)
 {
 	Super::SetupPlayerInputComponent(IC);
-	// Keyboard (legacy key bindings: no asset setup required)
-	IC->BindAxisKey(EKeys::Up, this, &AShipPawn::OnPitchUp);
-	IC->BindAxisKey(EKeys::Down, this, &AShipPawn::OnPitchDown);
-	IC->BindAxisKey(EKeys::Left, this, &AShipPawn::OnYawL);
-	IC->BindAxisKey(EKeys::Right, this, &AShipPawn::OnYawR);
-	IC->BindAxisKey(EKeys::A, this, &AShipPawn::OnRollL);
-	IC->BindAxisKey(EKeys::D, this, &AShipPawn::OnRollR);
-	IC->BindAxisKey(EKeys::Q, this, &AShipPawn::OnStrafeL);
-	IC->BindAxisKey(EKeys::E, this, &AShipPawn::OnStrafeR);
-	IC->BindAxisKey(EKeys::R, this, &AShipPawn::OnVertUp);
-	IC->BindAxisKey(EKeys::F, this, &AShipPawn::OnVertDown);
-	IC->BindAxisKey(EKeys::W, this, &AShipPawn::OnThrUp);
-	IC->BindAxisKey(EKeys::S, this, &AShipPawn::OnThrDown);
+	// Keyboard (legacy key bindings: no asset setup required). Keyboard keys are not 1D axes,
+	// so BindAxisKey ensures on them; bind press/release instead and treat the key as a held axis.
+	auto BindHold = [IC, this](const FKey& Key, float& Held)
+	{
+		float* Slot = &Held;
+		FInputKeyBinding Down(FInputChord(Key), IE_Pressed);
+		Down.bConsumeInput = true;
+		Down.KeyDelegate.GetDelegateForManualSet().BindWeakLambda(this, [Slot]() { *Slot = 1.f; });
+		IC->KeyBindings.Add(Down);
+		FInputKeyBinding Up(FInputChord(Key), IE_Released);
+		Up.bConsumeInput = true;
+		Up.KeyDelegate.GetDelegateForManualSet().BindWeakLambda(this, [Slot]() { *Slot = 0.f; });
+		IC->KeyBindings.Add(Up);
+	};
+	BindHold(EKeys::Up, KPitchUp);
+	BindHold(EKeys::Down, KPitchDown);
+	BindHold(EKeys::Left, KYawL);
+	BindHold(EKeys::Right, KYawR);
+	BindHold(EKeys::A, KRollL);
+	BindHold(EKeys::D, KRollR);
+	BindHold(EKeys::Q, KStrafeL);
+	BindHold(EKeys::E, KStrafeR);
+	BindHold(EKeys::R, KVertUp);
+	BindHold(EKeys::F, KVertDown);
+	BindHold(EKeys::W, KThrUp);
+	BindHold(EKeys::S, KThrDown);
 	IC->BindAxisKey(EKeys::MouseX, this, &AShipPawn::OnMouseX);
 	IC->BindAxisKey(EKeys::MouseY, this, &AShipPawn::OnMouseY);
 	IC->BindKey(EKeys::Tab, IE_Pressed, this, &AShipPawn::OnBoostPressed);

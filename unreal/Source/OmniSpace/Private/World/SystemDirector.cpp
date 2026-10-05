@@ -55,6 +55,7 @@ void ASystemDirector::LoadSystem(const FStarSystemData& InSystem)
 	SunLight = World->SpawnActor<ADirectionalLight>(ADirectionalLight::StaticClass(), FTransform::Identity, P);
 	if (UDirectionalLightComponent* L = Cast<UDirectionalLightComponent>(SunLight->GetLightComponent()))
 	{
+		L->SetMobility(EComponentMobility::Movable); // we re-aim it every frame as the ship moves
 		L->SetIntensity(8.0f);
 		L->SetLightColor(System.Star.LinearColor().Desaturate(0.4f));
 		L->SetAtmosphereSunLight(true);
