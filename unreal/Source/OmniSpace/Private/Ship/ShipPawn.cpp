@@ -490,7 +490,7 @@ void AShipPawn::BeginHyperspace()
 	Fuel = FMath::Max(0.0, Fuel - (0.35 + 3.4 * FMath::Square(FMath::Min(1.0, D / JumpRangeLy))));
 	Mode = EFlightMode::Hyperspace;
 	HyperT = 0;
-	bAutopilot = false;
+	bAutopilot = Route.Num() > 1; // on a plotted route the autopilot keeps flying hop after hop
 	DockingStationId.Empty();
 	TargetId.Empty();
 	Velocity = FVector::ZeroVector;
