@@ -68,5 +68,31 @@ def test_survey_fallback_when_ai_fails(tmp_path, monkeypatch):
         assert j["status"] == "ready", j
         assert j["system"]["model"] == "onboard survey"
         assert j["system"]["source"] == "procedural"
-        assert any("onboard survey" in line for line in j["log"])
-        assert "survey" in (j.get("error") or "")
+        assert j["dressing"] == "none"
+        assert any("Onboard survey" in line for line in j["log"])
+
+
+def test_dressing_replaces_survey_names(tmp_path):
+    """Scripted mode: the survey publishes instantly, then the (scripted) Forge dresses it."""
+    os.environ["OMNISPACE_DB"] = str(tmp_path / "d.sqlite3")
+    os.environ["OMNISPACE_AI"] = "scripted"
+    import importlib
+    import omnispace_server.main as main
+    importlib.reload(main)
+    from tests.fixtures import star
+
+    with TestClient(main.app) as c:
+        s = star(settlement=0.6).model_dump()
+        r = c.post(f"/api/systems/{s['id']}/generate", json={"star": s, "neighbors": [], "commander": "Michael"}).json()
+        assert r["status"] in ("generating", "ready")
+        for _ in range(200):
+            j = c.get(f"/api/systems/{s['id']}/job").json()
+            if j["status"] == "ready" and j["dressing"] in ("done", "failed"):
+                break
+            time.sleep(0.05)
+        assert j["status"] == "ready" and j["dressing"] == "done", j
+        sysd = j["system"]
+        assert sysd["source"] == "ai"
+        assert all(b["name"].startswith(s["name"]) for b in sysd["bodies"])
+        assert sysd["profile"]["lore"].startswith("Settlers reached")
+        assert len(sysd["stations"]) >= 1 and sysd["stations"][0]["name"].endswith("Exchange")

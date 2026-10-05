@@ -211,7 +211,7 @@ void AShipPawn::SetTarget(const FString& Id)
 	TargetId = Id;
 	if (!Id.IsEmpty()) JumpTargetId.Empty();
 	if (Audio) Audio->Play(TEXT("blip"), 0.6f);
-	if (!Id.IsEmpty()) Msg(FString::Printf(TEXT("Target: %s"), *Id));
+	if (!Id.IsEmpty()) Msg(FString::Printf(TEXT("Target: %s"), Director ? *Director->GetEntityName(Id) : *Id));
 }
 
 void AShipPawn::CycleTarget()

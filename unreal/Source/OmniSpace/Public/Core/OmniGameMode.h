@@ -27,6 +27,8 @@ public:
 	void OnSystemLoaded(const FString& SystemId, bool bSuccess, const FStarSystemData& System);
 	UFUNCTION()
 	void OnForgeLog(const FString& SystemId, const TArray<FString>& Lines);
+	UFUNCTION()
+	void OnSystemDressed(const FString& SystemId, const FStarSystemData& System);
 
 	/** Star we are currently in (galaxy descriptor). */
 	UPROPERTY(BlueprintReadOnly, Category = "OmniSpace") FStarDescriptor CurrentStar;

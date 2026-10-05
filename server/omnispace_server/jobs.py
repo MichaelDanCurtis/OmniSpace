@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Optional
 
 from .draft import SystemDraft
-from .forge import ForgeRuntime, forge_system, model_name
+from .forge import ForgeRuntime, model_name
 from .schema import GenerateRequest
 from .store import Store
 
@@ -26,11 +26,13 @@ class Job:
     finished: Optional[float] = None
     task: Optional[asyncio.Task[Any]] = None
     prefetch: bool = False
-    survey: bool = False  # no AI available: chart with the onboard survey (scripted forge) directly
+    survey: bool = False  # no AI available: the onboard survey record is final
+    dressing: str = "pending"  # pending | done | failed | none
 
     def public(self) -> dict[str, Any]:
         return {
             "status": self.status,
+            "dressing": self.dressing,
             "log": list(self.draft.log) if self.draft else [],
             "error": self.error,
             "elapsed": round((self.finished or time.time()) - self.started, 1),
@@ -97,9 +99,25 @@ class JobManager:
         return out
 
     async def _run(self, job: Job) -> None:
+        """Survey first (instant, deterministic), publish it, then let the Forge dress it.
+
+        The system is 'ready' as soon as the survey lands, so a jump never waits on a
+        model. The AI pass runs after and, if it succeeds, replaces the stored record;
+        clients that are already in the system pick the dressed version up on their next
+        job poll.
+        """
         assert job.draft is not None
         holding_lane = False
         try:
+            from .survey import survey_system
+
+            survey_system(job.draft)
+            skeleton = job.draft.build("onboard survey", source="procedural")
+            self.store.put(skeleton)
+            job.status = "ready"
+            job.dressing = "none" if job.survey else "pending"
+            if job.survey:
+                return
             # at most one prefetch runs at a time; a prefetch that gets promoted (the pilot
             # actually jumps) stops waiting for the lane immediately
             while job.prefetch:
@@ -109,40 +127,27 @@ class JobManager:
                     break
                 await asyncio.sleep(0.3)
             async with self.sem:
-                if job.survey:
-                    raise RuntimeError("AI forge unavailable; charting with the onboard survey")
                 if self.runtime_factory is not None:
                     runtime = await self.runtime_factory()
                 else:
                     runtime = ForgeRuntime(model=self.model_override, label=self.model_label())
-                job.draft.log.append(f"Hyperspace cartography uplink established · {runtime.label}")
-                await forge_system(job.draft, timeout=self.timeout, runtime=runtime)
-            system = job.draft.build(runtime.label)
-            self.store.put(system)
-            job.status = "ready"
-        except Exception as e:  # noqa: BLE001 - report every failure to the client
-            log.exception("forge failed for %s", job.system_id)
-            job.error = f"{type(e).__name__}: {e}"[:500]
-            job.draft.log.append("Forge link lost — falling back to onboard survey computer")
-            # The game must stay playable without the AI: chart the system with the scripted
-            # stand-in forge (deterministic, instant) and keep the error for the status line.
-            try:
-                from .scripted import ScriptedForgeModel
+                job.draft.log.append(f"Stellar Forge uplink established · {runtime.label}")
+                from .dressing import dress_draft
 
-                survey = ForgeRuntime(model=ScriptedForgeModel(delay=0.05), label="onboard survey")
-                old = job.draft
-                fresh = SystemDraft(star=old.star, neighbors=old.neighbors, commander=old.commander)
-                fresh.log.extend(old.log)  # keep the cartography log the pilot has already seen
-                job.draft = fresh
-                await forge_system(fresh, timeout=min(self.timeout, 60), runtime=survey)
-                system = fresh.build("onboard survey", source="procedural")
-                self.store.put(system)
-                job.status = "ready"
-                log.warning("charted %s with the onboard survey after the forge failed", job.system_id)
-            except Exception as e2:  # noqa: BLE001
-                log.exception("survey fallback failed for %s", job.system_id)
+                problems = await dress_draft(job.draft, runtime, timeout=min(self.timeout, 150))
+                if problems:
+                    log.info("dressing problems for %s: %s", job.system_id, problems)
+            dressed = job.draft.build(runtime.label, source="ai")
+            self.store.put(dressed, overwrite=True)
+            job.dressing = "done"
+        except Exception as e:  # noqa: BLE001 - the survey skeleton stands; report the failure
+            log.exception("forge dressing failed for %s", job.system_id)
+            job.error = f"{type(e).__name__}: {e}"[:500]
+            if job.status != "ready":
                 job.status = "failed"
-                job.error = f"{job.error} / survey: {type(e2).__name__}: {e2}"[:500]
+            else:
+                job.dressing = "failed"
+                job.draft.log.append("Forge link lost — the onboard survey record stands")
         finally:
             if holding_lane:
                 self.prefetch_sem.release()

@@ -36,6 +36,7 @@ void AOmniGameMode::BeginPlay()
 	UGalaxySubsystem* Galaxy = GI->GetSubsystem<UGalaxySubsystem>();
 	Forge->OnSystemLoaded.AddDynamic(this, &AOmniGameMode::OnSystemLoaded);
 	Forge->OnLog.AddDynamic(this, &AOmniGameMode::OnForgeLog);
+	Forge->OnSystemDressed.AddDynamic(this, &AOmniGameMode::OnSystemDressed);
 	FString StartId = TEXT("kelvar");
 	FParse::Value(FCommandLine::Get(), TEXT("StartSystem="), StartId);
 	FStarDescriptor Star;
@@ -94,6 +95,14 @@ void AOmniGameMode::AbortJump()
 	CurrentStar = PreviousStar;
 	PendingSystemId = PreviousStar.Id;
 	if (!PreviousSystem.Id.IsEmpty()) EnterSystem(PreviousSystem, true);
+}
+
+void AOmniGameMode::OnSystemDressed(const FString& SystemId, const FStarSystemData& System)
+{
+	if (SystemId != CurrentStar.Id || !Director || bPendingJump) return;
+	Director->ApplyDressing(System);
+	if (AShipPawn* Ship = Cast<AShipPawn>(UGameplayStatics::GetPlayerPawn(GetWorld(), 0)))
+		Ship->Msg(FString::Printf(TEXT("Stellar Forge: %s chronicled - %s, %s"), *System.Name, *System.Profile.Faction, *System.Profile.Economy));
 }
 
 void AOmniGameMode::OnForgeLog(const FString& SystemId, const TArray<FString>& Lines)

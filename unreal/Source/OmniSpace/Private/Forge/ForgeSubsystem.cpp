@@ -161,17 +161,55 @@ void UForgeSubsystem::LoadSystem(const FStarDescriptor& Star, const TArray<FStar
 		FString St;
 		J->TryGetStringField(TEXT("status"), St);
 		Self->OnLog.Broadcast(Id, LogLines(J));
-		if (St == TEXT("ready"))
-		{
-			FStarSystemData Sys;
-			const TSharedPtr<FJsonObject>* SysObj = nullptr;
-			if (J->TryGetObjectField(TEXT("system"), SysObj) && FStarSystemData::FromJson(*SysObj, Sys)) Self->Finish(Id, true, Sys);
-			else Self->Finish(Id, false, FStarSystemData());
-		}
+		if (St == TEXT("ready")) Self->HandleReady(Id, J, Started);
 		else if (St == TEXT("generating")) Self->PollJob(Id, Started);
 		else Self->Finish(Id, false, FStarSystemData()); // unavailable / failed
 	});
 	Req->ProcessRequest();
+}
+
+void UForgeSubsystem::HandleReady(const FString& SystemId, const TSharedPtr<FJsonObject>& J, double StartedAt)
+{
+	FStarSystemData Sys;
+	const TSharedPtr<FJsonObject>* SysObj = nullptr;
+	if (!(J->TryGetObjectField(TEXT("system"), SysObj) && FStarSystemData::FromJson(*SysObj, Sys))) { Finish(SystemId, false, FStarSystemData()); return; }
+	FString Dressing;
+	J->TryGetStringField(TEXT("dressing"), Dressing);
+	const bool bWasPending = Pending.Contains(SystemId);
+	if (bWasPending) Finish(SystemId, true, Sys);
+	else
+	{
+		// a dressing poll: only announce when the record actually changed to the AI version
+		Cache.Add(SystemId, Sys);
+		if (Sys.Source == TEXT("ai")) OnSystemDressed.Broadcast(SystemId, Sys);
+	}
+	if (Dressing == TEXT("pending")) PollDressing(SystemId, StartedAt);
+}
+
+void UForgeSubsystem::PollDressing(const FString& SystemId, double StartedAt)
+{
+	if (FPlatformTime::Seconds() - StartedAt > 240.0) return;
+	UWorld* World = GetWorld();
+	if (!World) return;
+	TWeakObjectPtr<UForgeSubsystem> Weak(this);
+	FTimerHandle Handle;
+	World->GetTimerManager().SetTimer(Handle, [Weak, SystemId, StartedAt]()
+	{
+		if (!Weak.IsValid()) return;
+		UForgeSubsystem* Self = Weak.Get();
+		auto Req = Self->MakeRequest(FString::Printf(TEXT("/api/systems/%s/job"), *FGenericPlatformHttp::UrlEncode(SystemId)), TEXT("GET"));
+		Req->OnProcessRequestComplete().BindLambda([Weak, SystemId, StartedAt](FHttpRequestPtr, FHttpResponsePtr Resp, bool bOk)
+		{
+			if (!Weak.IsValid()) return;
+			UForgeSubsystem* Inner = Weak.Get();
+			TSharedPtr<FJsonObject> J = (bOk && Resp.IsValid()) ? ParseObject(Resp->GetContentAsString()) : nullptr;
+			if (!J.IsValid()) return;
+			FString St;
+			J->TryGetStringField(TEXT("status"), St);
+			if (St == TEXT("ready")) Inner->HandleReady(SystemId, J, StartedAt);
+		});
+		Req->ProcessRequest();
+	}, 2.5f, false);
 }
 
 void UForgeSubsystem::PollJob(const FString& SystemId, double StartedAt)
@@ -195,13 +233,7 @@ void UForgeSubsystem::PollJob(const FString& SystemId, double StartedAt)
 			FString St;
 			J->TryGetStringField(TEXT("status"), St);
 			Inner->OnLog.Broadcast(SystemId, LogLines(J));
-			if (St == TEXT("ready"))
-			{
-				FStarSystemData Sys;
-				const TSharedPtr<FJsonObject>* SysObj = nullptr;
-				if (J->TryGetObjectField(TEXT("system"), SysObj) && FStarSystemData::FromJson(*SysObj, Sys)) Inner->Finish(SystemId, true, Sys);
-				else Inner->Finish(SystemId, false, FStarSystemData());
-			}
+			if (St == TEXT("ready")) Inner->HandleReady(SystemId, J, StartedAt);
 			else if (St == TEXT("generating")) Inner->PollJob(SystemId, StartedAt);
 			else
 			{

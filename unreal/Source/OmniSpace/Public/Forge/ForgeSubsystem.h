@@ -24,6 +24,8 @@ struct FForgeStatus
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnForgeStatus, const FForgeStatus&, Status);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnForgeLog, const FString&, SystemId, const TArray<FString>&, Lines);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnSystemLoaded, const FString&, SystemId, bool, bSuccess, const FStarSystemData&, System);
+/** The Forge finished dressing a system that was already delivered as a survey skeleton. */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnSystemDressed, const FString&, SystemId, const FStarSystemData&, System);
 
 UCLASS()
 class OMNISPACE_API UForgeSubsystem : public UGameInstanceSubsystem
@@ -42,6 +44,7 @@ public:
 	UPROPERTY(BlueprintAssignable) FOnForgeStatus OnStatus;
 	UPROPERTY(BlueprintAssignable) FOnForgeLog OnLog;
 	UPROPERTY(BlueprintAssignable) FOnSystemLoaded OnSystemLoaded;
+	UPROPERTY(BlueprintAssignable) FOnSystemDressed OnSystemDressed;
 
 	UFUNCTION(BlueprintCallable, Category = "OmniSpace|Forge")
 	void CheckHealth();
@@ -74,6 +77,9 @@ private:
 
 	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> MakeRequest(const FString& Path, const FString& Verb) const;
 	void PollJob(const FString& SystemId, double StartedAt);
+	/** After a survey skeleton arrived: keep polling (slowly) until the Forge dresses it. */
+	void PollDressing(const FString& SystemId, double StartedAt);
+	void HandleReady(const FString& SystemId, const TSharedPtr<FJsonObject>& J, double StartedAt);
 	void Finish(const FString& SystemId, bool bOk, const FStarSystemData& System);
 	TSharedRef<FJsonObject> GenerateBody(const FStarDescriptor& Star, const TArray<FStarDescriptor>& Neighbors, const FString& Commander, bool bPrefetch) const;
 };

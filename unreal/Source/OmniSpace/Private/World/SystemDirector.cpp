@@ -208,3 +208,22 @@ FString ASystemDirector::GetEntityKind(const FString& Id) const
 	for (const FUniverseEntity& E : Entities) if (E.Id == Id) return E.Kind;
 	return FString();
 }
+
+FString ASystemDirector::GetEntityName(const FString& Id) const
+{
+	if (Id == TEXT("star")) return System.Star.Name;
+	if (const FBodyData* B = System.FindBody(Id)) return B->Name;
+	if (const FStationData* S = System.FindStation(Id)) return S->Name;
+	for (const FPoiData& P : System.Pois) if (P.Id == Id) return P.Name;
+	return Id;
+}
+
+void ASystemDirector::ApplyDressing(const FStarSystemData& Dressed)
+{
+	if (Dressed.Id != System.Id) return;
+	System = Dressed;
+	for (FUniverseEntity& E : Entities)
+		if (AStationActor* St = Cast<AStationActor>(E.Actor))
+			if (const FStationData* S = System.FindStation(E.Id)) St->Station = *S;
+	UE_LOG(LogOmniSpace, Log, TEXT("System %s dressed by the Forge (%s)"), *System.Name, *System.Profile.Faction);
+}

@@ -34,6 +34,9 @@ class ScriptedForgeModel(Model):
                            previous_response_id=None, conversation_id=None, prompt=None, **kwargs: Any) -> ModelResponse:
         await asyncio.sleep(self.delay)
         items = input if isinstance(input, list) else [{"role": "user", "content": input}]
+        tool_names = [getattr(t, "name", "") for t in (tools or [])]
+        if any(n.endswith("dress_system") for n in tool_names):
+            return self._dress(items, next(n for n in tool_names if n.endswith("dress_system")))
         calls: dict[str, str] = {}
         outputs: list[tuple[str, dict[str, Any]]] = []
         for it in items:
@@ -67,6 +70,38 @@ class ScriptedForgeModel(Model):
 
     def stream_response(self, *args: Any, **kwargs: Any) -> AsyncIterator[Any]:  # pragma: no cover - not used
         raise NotImplementedError
+
+    # ---------------------------------------------------------------- dressing pass
+    def _dress(self, items: list[Any], tool_name: str) -> ModelResponse:
+        """Rename everything from the skeleton in the prompt and write stock lore (test stand-in)."""
+        text = ""
+        for it in items:
+            d = it if isinstance(it, dict) else getattr(it, "model_dump", lambda: {})()
+            if d.get("role") == "user":
+                c = d.get("content")
+                text = c if isinstance(c, str) else "".join(x.get("text", "") for x in c if isinstance(x, dict))
+        try:
+            skel = json.loads(text[text.index("{"):])
+        except Exception:  # noqa: BLE001
+            skel = {"bodies": [], "stations": [], "pois": [], "star": {"name": "Unknown"}}
+        star = skel["star"]["name"]
+        rng = random.Random(star)
+        inhabited = skel.get("settlement_index", 0) > 0.05
+        args = {
+            "profile": {
+                "description": f"{star}: a {skel['star'].get('label', 'star')} system the Forge has named.",
+                "lore": f"Settlers reached {star} two generations ago and named its worlds after the ships that carried them. "
+                        + ("Trade still follows the old arrival lanes." if inhabited else "They did not stay."),
+                "faction": "Free Worlds Accord" if inhabited else "Unclaimed", "government": "Democracy" if inhabited else "None",
+                "economy": "Extraction" if inhabited else "None", "security": "low" if inhabited else "none",
+                "population": 120000 if inhabited else 0, "danger": 1 if inhabited else 3, "star_flavor": skel["star"].get("label", "star"),
+            },
+            "bodies": [{"id": b["id"], "name": f"{star} {_name(rng)}", "description": f"A {b['type'].replace('_', ' ')} world named by the Forge."} for b in skel["bodies"]],
+            "stations": [{"id": s_["id"], "name": f"{_name(rng)} Exchange", "tagline": "Further, together", "description": "A Forge-named station.",
+                          "faction": "Free Worlds Accord", "economy": "Extraction"} for s_ in skel["stations"]],
+            "pois": [{"id": p["id"], "name": "The Quiet Signal", "description": "A hook the Forge wrote."} for p in skel["pois"]],
+        }
+        return self._calls([(tool_name, args)])
 
     # ---------------------------------------------------------------- script
     def _calls(self, calls: list[tuple[str, dict[str, Any]]]) -> ModelResponse:

@@ -126,7 +126,9 @@ async def generate(system_id: str, req: GenerateRequest) -> dict[str, Any]:
     existing = app.state.store.get(system_id)
     if existing:
         job = app.state.jobs.jobs.get(system_id)
-        return {"status": "ready", "system": existing, "log": job.public()["log"] if job else []}
+        pub = job.public() if job else {}
+        return {"status": "ready", "system": existing, "log": pub.get("log", []),
+                "dressing": pub.get("dressing", "done" if existing.get("source") == "ai" else "none")}
     status = ai_status()
     # No AI (not signed in / no key): the server still charts the system with the onboard
     # survey so every client, including the Unreal build, always gets a system back.
@@ -139,7 +141,9 @@ def job_status(system_id: str) -> dict[str, Any]:
     sys = app.state.store.get(system_id)
     job = app.state.jobs.jobs.get(system_id)
     if sys:
-        return {"status": "ready", "system": sys, "log": job.public()["log"] if job else [], "error": job.error if job else None}
+        pub = job.public() if job else {}
+        return {"status": "ready", "system": sys, "log": pub.get("log", []), "error": pub.get("error"),
+                "dressing": pub.get("dressing", "none" if sys.get("source") != "ai" else "done")}
     if not job:
         raise HTTPException(404, "no job")
     return {**job.public(), "system": None}

@@ -188,7 +188,7 @@ void AOmniHUD::DrawHUD()
 			{
 				const double Dist = FVector::Dist(P, D->GetShipUniversePos()) - (R > 5000 ? R : 0);
 				FVector S = Project(D->ToWorld(P));
-				const FString Label = FString::Printf(TEXT("%s  %s"), *Ship->TargetId.ToUpper(), *FmtDist(FMath::Max(0.0, Dist)));
+				const FString Label = FString::Printf(TEXT("%s  %s"), *D->GetEntityName(Ship->TargetId).ToUpper(), *FmtDist(FMath::Max(0.0, Dist)));
 				if (S.Z > 0)
 				{
 					Bracket(S.X, S.Y, 16 * U, Amber, 1.5f);

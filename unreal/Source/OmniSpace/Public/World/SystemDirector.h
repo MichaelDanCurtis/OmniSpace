@@ -68,6 +68,10 @@ public:
 	double NearestBody(FString& OutId) const;
 	/** Entity kind ("star" | "planet" | "moon" | "station" | "poi"), empty if unknown. */
 	FString GetEntityKind(const FString& Id) const;
+	/** Display name for an entity id (falls back to the id). */
+	FString GetEntityName(const FString& Id) const;
+	/** The Forge dressed the current system: swap names/lore in place, no respawn. */
+	void ApplyDressing(const FStarSystemData& Dressed);
 
 	/** Universe->world conversion (cm). */
 	FVector ToWorld(const FVector& UniversePosM) const { return (UniversePosM - ShipPos) * 100.0; }
