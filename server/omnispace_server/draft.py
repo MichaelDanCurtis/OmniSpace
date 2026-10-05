@@ -392,6 +392,20 @@ class SystemDraft:
         self._note("Cartography complete. Plotting exit vector…")
         return {"ok": True, "message": "System committed to the galactic record."}
 
+    @classmethod
+    def from_system(cls, system: StarSystem, neighbors: list[Neighbor] | None = None) -> "SystemDraft":
+        """Rebuild a draft from a stored system (to dress a survey record later)."""
+        d = cls(star=system.star, neighbors=neighbors or [], commander=system.discoveredBy or "Unknown")
+        d.profile = system.profile
+        d.star_flavor = system.starFlavor
+        d.bodies = [b.model_copy() for b in system.bodies]
+        d.stations = [s.model_copy() for s in system.stations]
+        d.belts = [b.model_copy() for b in system.belts]
+        d.pois = [p.model_copy() for p in system.pois]
+        d.finalized = True
+        d.surveyed = True
+        return d
+
     # ------------------------------------------------------------ output
     def build(self, model: Optional[str], source: str = "ai") -> StarSystem:
         profile = self.profile or SystemProfile(

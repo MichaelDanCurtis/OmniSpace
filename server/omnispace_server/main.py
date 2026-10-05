@@ -124,12 +124,14 @@ async def generate(system_id: str, req: GenerateRequest) -> dict[str, Any]:
     if req.star.id != system_id:
         raise HTTPException(400, "star id mismatch")
     existing = app.state.store.get(system_id)
+    status = ai_status()
     if existing:
         job = app.state.jobs.jobs.get(system_id)
+        if existing.get("source") == "procedural" and status["enabled"] and (not job or job.dressing in ("none", "failed")):
+            job = app.state.jobs.start_dressing(existing, req)  # the survey charted it; let the Forge name it now
         pub = job.public() if job else {}
         return {"status": "ready", "system": existing, "log": pub.get("log", []),
                 "dressing": pub.get("dressing", "done" if existing.get("source") == "ai" else "none")}
-    status = ai_status()
     # No AI (not signed in / no key): the server still charts the system with the onboard
     # survey so every client, including the Unreal build, always gets a system back.
     job = app.state.jobs.start(req, survey=not status["enabled"])

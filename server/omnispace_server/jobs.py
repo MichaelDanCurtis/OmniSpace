@@ -74,6 +74,47 @@ class JobManager:
         job.task = asyncio.create_task(self._run(job))
         return job
 
+    def start_dressing(self, existing: dict[str, Any], req: GenerateRequest) -> Optional[Job]:
+        """A survey-only record exists and the AI is available now: dress it in the background."""
+        sid = req.star.id
+        job = self.jobs.get(sid)
+        if job and job.status == "generating" or (job and job.dressing == "pending"):
+            return job
+        from .schema import StarSystem
+
+        try:
+            system = StarSystem.model_validate(existing)
+        except Exception:  # noqa: BLE001
+            return None
+        draft = SystemDraft.from_system(system, req.neighbors)
+        draft.neighbor_summaries = self._neighbor_context(req)
+        draft.log.append(f"Stellar Forge revisiting {req.star.name}")
+        job = Job(system_id=sid, draft=draft, status="ready", dressing="pending")
+        job.prefetch = req.prefetch
+        self.jobs[sid] = job
+        job.task = asyncio.create_task(self._dress_only(job))
+        return job
+
+    async def _dress_only(self, job: Job) -> None:
+        assert job.draft is not None
+        try:
+            async with self.sem:
+                if self.runtime_factory is not None:
+                    runtime = await self.runtime_factory()
+                else:
+                    runtime = ForgeRuntime(model=self.model_override, label=self.model_label())
+                from .dressing import dress_draft
+
+                await dress_draft(job.draft, runtime, timeout=min(self.timeout, 150))
+            self.store.put(job.draft.build(runtime.label, source="ai"), overwrite=True)
+            job.dressing = "done"
+        except Exception as e:  # noqa: BLE001
+            log.exception("dressing failed for %s", job.system_id)
+            job.error = f"{type(e).__name__}: {e}"[:500]
+            job.dressing = "failed"
+        finally:
+            job.finished = time.time()
+
     def cancel(self, system_id: str) -> None:
         job = self.jobs.get(system_id)
         if job and job.status == "generating" and job.task:
