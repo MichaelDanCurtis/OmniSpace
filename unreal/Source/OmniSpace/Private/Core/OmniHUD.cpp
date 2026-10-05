@@ -266,7 +266,7 @@ void AOmniHUD::DrawHUD()
 			DrawText(TEXT("GALAXY MAP"), White, MX + 16 * U, MY + 12 * U, Font, 1.4f * U);
 			DrawText(TEXT("N next star in range   B plot route to a far star   H jump   M close"), Grey, MX + 16 * U, MY + 36 * U, Font, 0.9f * U);
 			const FStarDescriptor& Cur = GM->CurrentStar;
-			const double RangeLy = 60.0;
+			const double RangeLy = 42.0;
 			const float Scale = (FMath::Min(MW, MH) * 0.46f) / static_cast<float>(RangeLy);
 			const float OX = MX + MW * 0.5f, OY = MY + MH * 0.54f;
 			// galactic plane top-down: TS x -> right, TS z -> up on the map; TS y (height) as a stalk
@@ -287,22 +287,22 @@ void AOmniHUD::DrawHUD()
 			{
 				const float PX = OX + static_cast<float>(S.Pos.X - Cur.Pos.X) * Scale;
 				const float PY = OY - static_cast<float>(S.Pos.Z - Cur.Pos.Z) * Scale;
-				const float Dy = static_cast<float>(S.Pos.Y - Cur.Pos.Y) * Scale * 0.5f;
+				const float Dy = static_cast<float>(S.Pos.Y - Cur.Pos.Y) * Scale * 0.3f;
 				const double DistLy = FVector::Dist(S.Pos, Cur.Pos);
 				const bool bCur = S.Id == Cur.Id;
 				const bool bTarget = S.Id == Ship->JumpTargetId;
 				const bool bDest = S.Id == Ship->RouteDestId;
 				FStarSystemData Tmp;
 				const bool bCharted = Forge && Forge->GetCached(S.Id, Tmp);
-				FLinearColor C = S.LinearColor(); C.A = DistLy <= Ship->JumpRangeLy || bCur ? 1.f : 0.55f;
+				FLinearColor C = S.LinearColor(); C.A = DistLy <= Ship->JumpRangeLy || bCur || bTarget || bDest ? 1.f : 0.35f;
 				if (FMath::Abs(Dy) > 1.f) DrawLine(PX, PY, PX, PY - Dy, FLinearColor(C.R, C.G, C.B, 0.25f), 1.f);
-				const float Sz = (bCur ? 5.f : 2.5f + static_cast<float>(FMath::Clamp(S.RadiusSolar, 0.2, 3.0))) * U;
+				const float Sz = (bCur ? 5.f : 2.f + static_cast<float>(FMath::Clamp(S.RadiusSolar, 0.2, 2.0))) * U;
 				DrawRect(C, PX - Sz / 2, PY - Dy - Sz / 2, Sz, Sz);
 				if (bCur) Circle(PX, PY - Dy, 10 * U, Cyan, 16, 1.5f);
 				if (bTarget) Diamond(PX, PY - Dy, 10 * U, Green, 1.5f);
 				if (bDest) Bracket(PX, PY - Dy, 10 * U, Amber, 1.5f);
 				if (bCharted && !bCur) Circle(PX, PY - Dy, 6 * U, FLinearColor(White.R, White.G, White.B, 0.5f), 10, 1.f);
-				if (bCur || bTarget || bDest || DistLy <= Ship->JumpRangeLy || S.Settlement > 0.5)
+				if (bCur || bTarget || bDest || DistLy <= Ship->JumpRangeLy || S.Settlement > 0.8)
 					DrawText(FString::Printf(TEXT("%s  %.1f"), *S.Name, DistLy), bCur ? Cyan : (bTarget ? Green : FLinearColor(0.85f, 0.9f, 1.f, C.A)), PX + 8 * U, PY - Dy - 6 * U, Font, 0.8f * U);
 			}
 			// legend
