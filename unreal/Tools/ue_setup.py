@@ -140,7 +140,7 @@ if (RingOpacity > 0.001) {
     if (tt > 0.0) {
       float3 hit = p + tt * L;
       float u = (length(hit.xy) - RingIn) / (RingOut - RingIn);
-      if (u > 0.0 && u < 1.0) col *= 1.0 - 0.85 * ringDensity(u, RingSeed) * RingOpacity;
+      if (u > 0.0 && u < 1.0) col *= 1.0 - 0.85 * ringDensity(u, RingSeed, 0.0) * RingOpacity;
     }
   }
 }
@@ -291,8 +291,9 @@ def build_rings(mat):
 float3 P = LocalPos / 50.0;               // plane mesh is 100 cm: P in units of the outer radius
 float r = length(P.xy);
 float t = (r - Inner) / (1.0 - Inner);
+float fw = fwidth(t); // before any branch: derivatives need uniform control flow
 if (t < 0.0 || t > 1.0) { Alpha = 0; return 0; }
-float d = ringDensity(t, Seed);
+float d = ringDensity(t, Seed, fw);
 float3 L = normalize(SunL);
 float3 V = normalize(ViewL);
 // planet shadow: ray from the ring point toward the sun hits the planet sphere at the origin
@@ -300,9 +301,9 @@ float sh = 1.0;
 float t0 = -dot(P, L);
 if (t0 > 0.0) { float d2 = dot(P, P) - t0 * t0; sh = smoothstep(Planet * Planet * 0.9, Planet * Planet * 1.03, d2); }
 float lit = 0.12 + 0.88 * abs(L.z);
-float grain = 0.75 + 0.35 * snoise(float3(t * 40.0, 3.0, Seed));
+float grain = 0.8 + 0.25 * snoise(float3(t * 40.0, 3.0, Seed)) * saturate(1.0 - fw * 60.0);
 // thin, icy rings glow when you look at the sun through them
-float back = pow(saturate(dot(-V, L)), 5.0) * 1.8 * (1.0 - d * 0.6);
+float back = pow(saturate(dot(-V, L)), 6.0) * 0.7 * (1.0 - d * 0.7);
 float3 col = Color * SunColor * grain * (lit * sh + 0.025) + Color * SunColor * back * sh;
 Alpha = d * Opacity;
 return col;
