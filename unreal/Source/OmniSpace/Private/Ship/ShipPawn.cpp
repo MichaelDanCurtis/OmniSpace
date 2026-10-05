@@ -395,8 +395,10 @@ void AShipPawn::Rotate(float Dt, double Pitch, double Yaw, double Roll, const FV
 		if (FMath::Abs(Roll) > 0.02) AngVel.Z += Clamp(Target.Z - AngVel.Z, -Acc * Dt, Acc * Dt);
 	}
 	// Local axes: X forward, Y right, Z up. Pitch about Y, yaw about Z, roll about X.
-	// Signs follow FRotator conventions: +pitch nose up, +yaw turn right, +roll right wing down.
-	FQuat DQ = FQuat(FVector::RightVector, AngVel.X * Dt) * FQuat(FVector::UpVector, AngVel.Y * Dt) * FQuat(FVector::ForwardVector, AngVel.Z * Dt);
+	// FQuat(Axis, Angle) is a right-handed rotation, so about +Y a positive angle is nose DOWN and
+	// about +X it is left wing down; negate those so +pitch = nose up, +roll = right wing down,
+	// +yaw = turn right (FRotator conventions, verified: FQuat(RightVector,a).Rotator().Pitch == -a).
+	FQuat DQ = FQuat(FVector::RightVector, -AngVel.X * Dt) * FQuat(FVector::UpVector, AngVel.Y * Dt) * FQuat(FVector::ForwardVector, -AngVel.Z * Dt);
 	Orientation = (Orientation * DQ).GetNormalized();
 	SetActorRotation(Orientation);
 }
