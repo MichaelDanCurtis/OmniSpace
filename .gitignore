@@ -8,4 +8,4 @@ __pycache__/
 .pytest_cache/
 .DS_Store
 client/node_modules/
-.omnispace-src.tar.gz
+.omnispace-*.tar.gz
