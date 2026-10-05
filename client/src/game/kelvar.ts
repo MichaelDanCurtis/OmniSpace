@@ -39,8 +39,8 @@ export const KELVAR: StarSystem = {
       description: 'A pale ice giant whose methane-rich atmosphere fuels half the Reach. Its broad rings are mined for water ice.',
     },
     {
-      id: 'orin', name: 'Orin', kind: 'moon', type: 'barren', parent: 'tanara', orbitM: 150000 * KM, phase: 5.75, inclination: 0.18,
-      radiusM: 1750 * KM, palette: ['#55524f', '#8c8884', '#c8c4be'], atmosphere: null, temperatureK: 88, gravityG: 0.16,
+      id: 'orin', name: 'Orin', kind: 'moon', type: 'barren', parent: 'tanara', orbitM: 150000 * KM, phase: 3.32, inclination: 1.25,
+      radiusM: 2600 * KM, palette: ['#55524f', '#8c8884', '#c8c4be'], atmosphere: null, temperatureK: 88, gravityG: 0.16,
       description: 'A cratered grey moon hosting the Combine deep-space listening array.',
     },
     {
@@ -61,7 +61,7 @@ export const KELVAR: StarSystem = {
   ],
   stations: [
     {
-      id: 'tanara-station', name: 'Tanara Station', kind: 'spire', parent: 'tanara', orbitM: 92000 * KM, phase: 5.2, inclination: 0.22,
+      id: 'tanara-station', name: 'Tanara Station', kind: 'spire', parent: 'tanara', orbitM: 92000 * KM, phase: 4.9, inclination: 0.22,
       faction: 'Nexus Astra Combine', economy: 'High Tech',
       services: ['refuel', 'repair', 'market', 'cartographics', 'missions'],
       tagline: 'Trade makes a brighter tomorrow',

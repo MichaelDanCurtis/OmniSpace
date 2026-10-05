@@ -102,8 +102,10 @@ class SystemDraft:
         s = self.star.settlement
         if s > 0.6:
             return "CORE: well settled, heavy traffic. 2-4 stations, canon factions, high security."
+        if s > 0.45:
+            return "INNER FRONTIER: settled but contested. 1-2 stations (at least one is required), mixed factions, medium security."
         if s > 0.3:
-            return "INNER FRONTIER: settled but contested. 1-2 stations, mixed factions, medium security."
+            return "INNER FRONTIER: settled but contested. 0-2 stations, mixed factions, medium security."
         if s > 0.05:
             return "FRONTIER: sparse. 0-1 small outposts (station_type 'outpost'), low security, independents/pirates/surveyors."
         return "DEEP SPACE: no permanent human presence. No stations. Faction 'Unclaimed', population 0, security 'none'. A derelict, beacon or anomaly POI is welcome."
@@ -376,8 +378,8 @@ class SystemDraft:
             out.append("Call set_system_profile.")
         if not self.bodies and self.star.cls not in ("NS", "L", "O", "WD"):
             out.append("Add at least one planet.")
-        if self.star.settlement > 0.6 and not self.stations and self.bodies:
-            out.append("This is a CORE system: add at least one station.")
+        if self.star.settlement > 0.45 and not self.stations and self.bodies:
+            out.append("This is a settled system (settlement index > 0.45): add at least one station.")
         if self.star.settlement < 0.03 and len(self.stations) > 1:
             out.append("Deep space systems should have at most one (lonely) station.")
         return out

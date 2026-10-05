@@ -198,7 +198,7 @@ export function generateProcedural(star: StarDescriptor): StarSystem {
   // settlement & stations
   const settle = star.settlement
   let stationCount = 0
-  if (settle > 0.55) stationCount = rng.int(1, 3)
+  if (settle > 0.45) stationCount = rng.int(1, 3)
   else if (settle > 0.2) stationCount = rng.chance(0.75) ? 1 : 0
   else if (settle > 0.02) stationCount = rng.chance(0.25) ? 1 : 0
   const hosts = bodies.filter((b) => b.kind === 'planet')

@@ -204,6 +204,13 @@ export class Game {
         this.quat.set(...p.quat)
         this.mode = 'normal'
         this.vel.set(0, 0, 0)
+        // resume in supercruise when parked in open space
+        const nearStation = [...this.sys.stations.values()].some((st) => st.abs.distanceTo(this.pos) < 200_000)
+        const nearBody = this.sys.sys.bodies.some((b) => this.sys!.bodyAbs.get(b.id)!.distanceTo(this.pos) - b.radiusM < Math.max(b.radiusM * 3, 1e7))
+        if (!nearStation && !nearBody) {
+          this.mode = 'supercruise'
+          this.scSpeed = SC_MIN
+        }
       }
     } else {
       // hyperspace arrival: near the star, in supercruise, star off to one side
@@ -1509,9 +1516,9 @@ export class Game {
         return {
           title: 'Dock at Tanara Station',
           steps: [
-            { text: 'Approach landing bay', done: d < DOCK_RANGE || !!this.docking || this.mode === 'docked' },
+            { text: 'Approach landing bay (W throttle · mouse/arrows steer)', done: d < DOCK_RANGE || !!this.docking || this.mode === 'docked' },
             { text: 'Request clearance (L)', done: !!this.docking || this.mode === 'docking' || this.mode === 'docked' },
-            { text: 'Dock and report to concourse', done: this.mode === 'docked' },
+            { text: 'Fly into the lit bay slowly — or press P for autopilot', done: this.mode === 'docked' },
           ],
         }
       }

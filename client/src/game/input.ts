@@ -62,7 +62,7 @@ export class Input {
 
   /** Mouse stick slowly self-centres so it behaves like relative aim. */
   decay(dt: number) {
-    const k = Math.exp(-dt * 2.2)
+    const k = Math.exp(-dt * 1.6)
     this.stick.x *= k
     this.stick.y *= k
     if (Math.abs(this.stick.x) < 0.01) this.stick.x = 0
