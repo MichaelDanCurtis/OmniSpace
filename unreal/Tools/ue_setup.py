@@ -227,11 +227,12 @@ float dust = fbm(gd * 2.2, 5) * 0.5 + 0.5;
 float lanes = fbm(gd * 7.0 + 3.0, 4) * 0.5 + 0.5;
 float mw = smoothstep(0.42, 0.0, band) * (0.35 + 0.65 * dust);
 mw *= 1.0 - 0.75 * smoothstep(0.35, 0.75, lanes) * smoothstep(0.25, 0.0, band);
-float3 col = float3(0.78, 0.72, 0.62) * mw * 0.4;
+float3 col = float3(0.78, 0.72, 0.62) * mw * 0.28;
 // faint nebulae
-float neb = pow(saturate(fbm(gd * 1.3 + 11.0, 5) * 0.5 + 0.5), 3.0);
-col += Nebula * neb * 0.35;
-col += float3(0.12, 0.25, 0.4) * pow(saturate(fbm(gd * 1.7 - 5.0, 4) * 0.5 + 0.5), 4.0) * 0.5;
+// faint nebulae: sparse, wispy, mostly hidden in the galactic band
+float neb = pow(saturate(fbm(gd * 1.3 + 11.0, 5) * 0.5 + 0.5), 5.0) * (0.3 + 0.7 * smoothstep(0.6, 0.0, band));
+col += Nebula * neb * 0.12;
+col += float3(0.12, 0.25, 0.4) * pow(saturate(fbm(gd * 1.7 - 5.0, 4) * 0.5 + 0.5), 7.0) * 0.14;
 // stars: three magnitude layers (sparse bright, medium, dense faint); more in the band
 float dens = 1.0 + 1.5 * smoothstep(0.5, 0.0, band);
 float s = starLayer(d, 24.0, 0.09 * dens, Seed) * 4.0;

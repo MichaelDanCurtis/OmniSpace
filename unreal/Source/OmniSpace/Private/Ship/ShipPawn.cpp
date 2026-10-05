@@ -1,4 +1,5 @@
 #include "Ship/ShipPawn.h"
+#include "Ship/Cockpit.h"
 #include "World/SystemDirector.h"
 #include "World/StationActor.h"
 #include "OmniSpace.h"
@@ -48,6 +49,7 @@ void AShipPawn::BeginPlay()
 {
 	Super::BeginPlay();
 	Orientation = GetActorQuat();
+	OmniCockpit::Build(this, Root);
 	if (APlayerController* PC = Cast<APlayerController>(GetController()))
 	{
 		PC->bShowMouseCursor = false;
