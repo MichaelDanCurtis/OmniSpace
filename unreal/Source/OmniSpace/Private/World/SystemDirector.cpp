@@ -228,9 +228,9 @@ void ASystemDirector::ApplyDressing(const FStarSystemData& Dressed)
 	UE_LOG(LogOmniSpace, Log, TEXT("System %s dressed by the Forge (%s)"), *System.Name, *System.Profile.Faction);
 }
 
-void ASystemDirector::SetSkyWarp(float Warp, const FVector& Dir)
+void ASystemDirector::SetSkyWarp(float Warp, const FVector& Dir, float Flow)
 {
-	if (Sky) Sky->SetWarp(Warp, Dir);
+	if (Sky) Sky->SetWarp(Warp, Dir, Flow);
 }
 
 void ASystemDirector::SetSystemHidden(bool bHidden)

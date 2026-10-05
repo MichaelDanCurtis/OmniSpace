@@ -59,7 +59,7 @@ public:
 	const FStarSystemData& GetSystem() const { return System; }
 	class ADirectionalLight* GetSunLight() const { return SunLight; }
 	/** Frame-shift streak on the sky dome. */
-	void SetSkyWarp(float Warp, const FVector& Dir);
+	void SetSkyWarp(float Warp, const FVector& Dir, float Flow);
 	/** Debug: toggle visibility of the sky dome / star. */
 	void DebugToggle(int32 What);
 

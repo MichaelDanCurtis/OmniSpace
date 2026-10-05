@@ -74,6 +74,78 @@ float starLayer(float3 dir, float cells, float density, float seed){
   }
   return best;
 }
+// Warp streaks: stars streaming outward from the jump point. (ph, th) are the view ray's azimuth
+// and polar angle in the warp frame (th = 0 at the jump point); the field is a lattice in that
+// space so every streak is exactly radial. flow scrolls the lattice outward (accumulated on the
+// CPU so it never runs backwards); len is the streak length in radians, width its angular
+// half-width. Streaks are drawn analytically - continuous lines, not strings of samples.
+float streakLayer(float ph, float th, float cellsPhi, float cellsTh, float flow, float len, float width, float density, float seed){
+  const float PI2 = 6.2831853, PI1 = 3.14159265;
+  float u = (ph + PI1) / PI2 * cellsPhi;
+  float v = th / PI1 * cellsTh - flow;
+  float2 cell = floor(float2(u, v));
+  float sth = max(sin(th), 0.02);
+  float best = 0.0;
+  [unroll] for (int j = 0; j <= 5; j++) [unroll] for (int i = -1; i <= 1; i++) {
+    float2 c = cell + float2(i, -j);
+    float cx = c.x - cellsPhi * floor(c.x / cellsPhi);
+    float3 h = hash33(float3(cx, c.y, seed));
+    if (h.x > density) continue;
+    float ph0 = (c.x + h.y) / cellsPhi * PI2 - PI1;
+    float th0 = (c.y + h.z + flow) / cellsTh * PI1;
+    float L = len * (0.35 + 0.65 * hash13(float3(cx, c.y, seed + 5.0)));
+    float a = th - th0;
+    if (a < 0.0 || a > L) continue;
+    float dph = ph - ph0; dph -= PI2 * round(dph / PI2);
+    float perp = abs(dph) * sth;
+    float mag = 0.3 + 0.7 * hash13(float3(cx, c.y, seed + 9.0));
+    float wgt = mag * exp(-perp * perp / (width * width));
+    wgt *= pow(saturate(a / L), 0.8) * smoothstep(L, L * 0.92, a); // the star leads, its trail fades behind
+    best = max(best, wgt);
+  }
+  return best;
+}
+// Lensed black hole, drawn in a plane: p in units of the shadow radius (|p| = 1 at the horizon),
+// disk horizontal. A thin accretion disk seen almost edge-on: its near side is the bright band
+// crossing in front of the shadow, its far side is bent over the top and under the bottom, a
+// photon ring hugs the shadow, violet haze around it all. Returns emissive colour (black inside).
+float3 blackHole(float2 p, float Time){
+  float r = length(p);
+  float xa = abs(p.x);
+  float hole = smoothstep(1.0, 0.975, r);
+  float3 hot = float3(1.0, 0.97, 0.94);
+  float3 warm = float3(1.0, 0.55, 0.72);
+  float3 violet = float3(0.5, 0.25, 0.95);
+  // disk texture: fine streaks slowly orbiting
+  float tex = 0.8 + 0.2 * snoise(float3(p.x * 2.5 - Time * 0.3, p.y * 10.0, 3.0));
+  tex *= 0.85 + 0.15 * snoise(float3(p.x * 8.0 - Time * 0.8, p.y * 30.0, 9.0));
+  float ext = 3.3;                                                   // disk outer edge
+  // near side: the band through the centre, slightly below the midline, thinning outward
+  float bandT = 0.1 * (1.0 - 0.75 * smoothstep(0.8, ext, xa)) + 0.012;
+  float band = exp(-pow((p.y + 0.04) / bandT, 2.0)) * (1.0 - smoothstep(1.8, ext, xa));
+  // far side bent over the top of the shadow, meeting the band at its sides
+  float eTop = sqrt(p.x * p.x / (1.5 * 1.5) + p.y * p.y / (1.55 * 1.55));
+  float topT = 0.11 * (1.0 - 0.55 * smoothstep(0.2, 1.4, xa)) + 0.02;
+  float arcTop = exp(-pow((eTop - 1.0) * 1.5 / topT, 2.0)) * smoothstep(-0.1, 0.25, p.y);
+  // and the thinner, tighter image under it
+  float eBot = sqrt(p.x * p.x / (1.35 * 1.35) + p.y * p.y / (0.95 * 0.95));
+  float botT = 0.075 * (1.0 - 0.5 * smoothstep(0.2, 1.2, xa)) + 0.015;
+  float arcBot = exp(-pow((eBot - 1.0) * 0.95 / botT, 2.0)) * smoothstep(0.1, -0.2, p.y) * 0.9;
+  // photon ring
+  float pr = exp(-pow((r - 1.025) / 0.03, 2.0)) * 1.2;
+  // Doppler beaming: the side swinging toward us burns brighter
+  float beam = lerp(1.55, 0.55, smoothstep(-2.0, 2.0, p.x));
+  float arcs = (arcTop + arcBot) * tex * beam * (1.0 - hole) + pr;
+  float front = band * tex * beam;                                   // passes in front of the shadow
+  float disk = arcs + front;
+  float3 col = lerp(warm, hot, saturate(disk * 0.8)) * disk * 9.0;
+  // haze: violet all round, warm along the disk plane
+  float out1 = saturate(1.0 - (r - 1.0) / 3.2);
+  float haze = pow(out1, 2.5) * (0.45 + 0.55 * exp(-p.y * p.y * 1.2));
+  col += violet * haze * 0.55 * (1.0 - hole);
+  col += warm * exp(-p.y * p.y * 6.0) * pow(out1, 3.0) * 0.5 * (1.0 - hole);
+  return col;
+}
 // Ring density profile, t = 0 at the inner edge .. 1 at the outer edge. Shared by the ring
 // material and the planet material (ring shadow on the planet). fw = fwidth(t) (0 if unknown):
 // the fine bands fade out when they would alias into noise at a distance / grazing angle.

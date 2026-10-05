@@ -1105,8 +1105,11 @@ void AShipPawn::Tick(float Dt)
 		if (FsdKind == EFsdKind::Jump && JumpDirection(JD)) TargetWarp = static_cast<float>(FMath::Pow(FsdProgress, 1.6));
 		else if (Mode == EFlightMode::Hyperspace) TargetWarp = 1.f;
 		else if (Time - ArrivalT < 2.5) { JumpDirection(JD); TargetWarp = static_cast<float>(FMath::Max(0.0, 1.0 - (Time - ArrivalT) / 2.5)); JD = -Orientation.GetForwardVector(); }
-		WarpAmount += (TargetWarp - WarpAmount) * (1.f - FMath::Exp(-Dt * 6.f));
-		if (Director) Director->SetSkyWarp(WarpAmount, JD);
+		WarpAmount += (TargetWarp - WarpAmount) * (1.f - FMath::Exp(-Dt * 4.f));
+		// the streak field scrolls outward at a pace set by the charge; integrated here so a
+		// falling charge never makes the stars run backwards
+		if (WarpAmount > 0.001f) WarpFlow += Dt * (0.15f + 1.6f * WarpAmount * WarpAmount);
+		if (Director) Director->SetSkyWarp(WarpAmount, JD, WarpFlow);
 		float TargetFlash = 0.f;
 		if (FsdKind == EFsdKind::Jump && FsdProgress > 0.9) TargetFlash = static_cast<float>((FsdProgress - 0.9) / 0.1);
 		FlashAmount = FMath::Max(TargetFlash, FlashAmount - Dt * (Mode == EFlightMode::Hyperspace ? 0.9f : 1.6f));

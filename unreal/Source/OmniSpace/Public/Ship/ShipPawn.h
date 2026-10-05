@@ -172,6 +172,7 @@ public:
 	UPROPERTY() TObjectPtr<class UStaticMeshComponent> Flash;
 	UPROPERTY() TObjectPtr<class UMaterialInstanceDynamic> FlashMID;
 	float WarpAmount = 0;      // sky streak 0..1
+	float WarpFlow = 0;        // accumulated streak scroll (never runs backwards)
 	float FlashAmount = 0;     // white-out 0..1
 	double ArrivalT = -100;    // time of the last hyperspace exit (stars rush back in)
 	FQuat HyperBaseQ = FQuat::Identity;

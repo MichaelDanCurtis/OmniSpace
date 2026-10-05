@@ -238,47 +238,58 @@ float dens = 1.0 + 1.0 * smoothstep(0.5, 0.0, band);
 float w = saturate(Warp);
 col *= 1.0 - w; // dust and nebulae fall away as the frame shift takes hold
 float3 stars = 0;
-[branch] if (w < 0.001) {
+// the resting star field; it fades as the streaks take over
+[branch] if (w < 0.5) {
   float s = starLayer(d, 24.0, 0.05 * dens, Seed) * 2.2;
   s += starLayer(d, 70.0, 0.035 * dens, Seed + 9.0) * 1.0;
   s += starLayer(d, 180.0, 0.03 * dens, Seed + 31.0) * 0.35;
   float3 tintv = lerp(float3(0.75, 0.82, 1.0), float3(1.0, 0.85, 0.65), hash13(floor(d * 90.0 + Seed)));
-  stars = tintv * s;
-} else {
-  // Warp: stars stream outward from the jump point. Each pixel integrates the star field along
-  // the great circle toward the jump direction, so every star smears into a radial streak; the
-  // near (bright) layer travels furthest - the parallax of a field you are rushing through.
+  stars = tintv * s * (1.0 - smoothstep(0.08, 0.5, w));
+}
+[branch] if (w > 0.001) {
+  // Warp: the field streams outward from the jump point - radial streaks drawn as continuous
+  // lines in the warp frame. The near layer is bright, long and fast; the far layers barely
+  // move: the parallax of a field you are rushing through. Streaks lengthen toward the
+  // periphery, where the stars peel away past the canopy.
   float3 wd = normalize(WarpDir);
-  float ct = saturate(dot(d, wd));
-  float reach = w * w * (0.9 - 0.5 * ct);  // streaks are longest toward the periphery
-  const int TAPS = 9;
-  float sA = 0, sB = 0, sC = 0;
-  [loop] for (int i = 0; i < TAPS; i++) {
-    float t = i / (TAPS - 1.0);
-    float fade = 1.0 - t * 0.7;
-    float3 dA = normalize(lerp(d, wd, reach * 1.0 * t));
-    float3 dB = normalize(lerp(d, wd, reach * 0.55 * t));
-    float3 dC = normalize(lerp(d, wd, reach * 0.3 * t));
-    sA += starLayer(dA, 24.0, 0.05 * dens, Seed) * fade;
-    sB += starLayer(dB, 70.0, 0.035 * dens, Seed + 9.0) * fade;
-    sC += starLayer(dC, 180.0, 0.03 * dens, Seed + 31.0) * fade;
-  }
-  float s = (sA * 2.2 + sB * 1.0 + sC * 0.35) * (1.0 + 2.5 * w) / (TAPS * 0.55);
+  float3 up = abs(wd.z) < 0.95 ? float3(0.0, 0.0, 1.0) : float3(1.0, 0.0, 0.0);
+  float3 e1 = normalize(cross(up, wd));
+  float3 e2 = cross(wd, e1);
+  float ct = dot(d, wd);
+  float th = acos(clamp(ct, -1.0, 1.0));
+  float ph = atan2(dot(d, e2), dot(d, e1));
+  float ww = smoothstep(0.0, 1.0, w);
+  float reach = (0.04 + 0.96 * ww * ww) * (0.3 + 0.7 * smoothstep(0.0, 1.5, th));
+  float s = streakLayer(ph, th, 36.0, 18.0, Flow * 1.0, reach * 0.9, 0.0024, 0.32, Seed) * 1.7;
+  s += streakLayer(ph, th, 80.0, 40.0, Flow * 0.5, reach * 0.45, 0.0017, 0.28, Seed + 9.0) * 1.0;
+  s += streakLayer(ph, th, 180.0, 90.0, Flow * 0.22, reach * 0.2, 0.0012, 0.25, Seed + 31.0) * 0.5;
+  s *= smoothstep(0.0, 0.25, w) * (1.0 + 2.0 * ww);
   // colour slides from white through violet as the charge peaks
-  float3 shift = lerp(float3(1.0, 1.0, 1.0), float3(0.62, 0.38, 1.0), smoothstep(0.2, 0.9, w));
-  stars = shift * s;
-  // the centre of the field darkens into the throat
-  stars *= 1.0 - 0.6 * w * pow(ct, 8.0);
+  float3 shift = lerp(float3(0.9, 0.93, 1.0), float3(0.62, 0.38, 1.0), smoothstep(0.25, 0.9, w));
+  float3 warpStars = shift * s;
+  // ahead, the event horizon opens: a lensed black hole growing at the jump point
+  float holeR = 0.012 + 0.085 * ww * ww;                       // shadow radius, radians
+  float3 bh = 0;
+  [branch] if (ct > 0.2) {
+    float2 pp = float2(dot(d, e1), dot(d, e2)) / (ct * holeR);
+    float2 ppS = pp * 0.9; // the sky version sits a touch smaller than the tunnel's
+    bh = blackHole(ppS, Flow * 1.5) * smoothstep(0.3, 0.75, w);
+    // the shadow swallows the streaks behind it
+    warpStars *= 1.0 - smoothstep(1.05, 0.97, length(ppS)) * smoothstep(0.3, 0.75, w);
+  }
+  stars += warpStars + bh;
 }
 col += stars;
 return col;
 """
-    node = custom(mat, code, ["LocalPos", "Seed", "Nebula", "Warp", "WarpDir"], -300, 0)
+    flow = scalar_param(mat, "Flow", 0.0, -700, 750)   # accumulated streak scroll (CPU side)
+    node = custom(mat, code, ["LocalPos", "Seed", "Nebula", "Warp", "WarpDir", "Flow"], -300, 0)
     MEL.connect_material_expressions(localpos, "", node, "LocalPos")
     MEL.connect_material_expressions(seed, "", node, "Seed")
     MEL.connect_material_expressions(tint, "", node, "Nebula")
     MEL.connect_material_expressions(warp, "", node, "Warp")
     MEL.connect_material_expressions(warpdir, "", node, "WarpDir")
+    MEL.connect_material_expressions(flow, "", node, "Flow")
     mat.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_UNLIT)
     mat.set_editor_property("two_sided", True)
     # "Is Sky": rendered at the far plane, so the dome never occludes anything however small it is.
@@ -303,17 +314,15 @@ float z = LocalPos.z / 50.0;
 float rr = length(LocalPos.xy) / 50.0;
 float3 col = 0;
 if (abs(z) > 0.985) {
-  // --- the horizon: a black disc ringed by a spiralling accretion glow
-  float spiral = sin(ang * 3.0 - Time * 2.5 + rr * 18.0) * 0.5 + 0.5;
-  float ring = pow(saturate(1.0 - abs(rr - 0.36) * 6.0), 2.5);
-  float halo = pow(saturate(1.0 - abs(rr - 0.5) * 2.2), 3.0) * 0.35;
-  float inner = smoothstep(0.30, 0.22, rr);          // the throat itself
-  float lens = pow(saturate(1.0 - rr * 1.6), 4.0) * 0.6;
-  col = Color * (ring * (1.5 + 1.5 * spiral) + halo) * 4.0 + float3(1,1,1) * lens * (1.0 - inner) * 0.5;
-  col *= 1.0 - inner;
-  col += float3(0.3, 0.15, 0.6) * (1.0 - inner) * pow(saturate(1.0 - rr), 2.0) * 0.4;
+  // --- the horizon: a lensed black hole, its accretion disk level with the ship. Cap space:
+  // local y is the ship's right, local x its down (the cylinder is pitched onto the forward axis).
+  float2 p = float2(LocalPos.y, -LocalPos.x) / 50.0 / 0.27;   // shadow radius = 27% of the cap
+  col = blackHole(p, Time);
+  // a faint slow swirl of infalling light outside the disk, tinted by the destination star
+  float swirl = pow(saturate(snoise(float3(ang * 2.0 - Time * 0.4 + rr * 6.0, rr * 3.0, 5.0)) * 0.5 + 0.5), 4.0);
+  col += Color * swirl * smoothstep(0.3, 0.6, rr) * 0.6;
   // blend the cap rim into the wall so the horizon has no hard circular edge
-  col = lerp(col, Color * 0.6, smoothstep(0.7, 1.0, rr));
+  col = lerp(col, Color * 0.6, smoothstep(0.78, 1.0, rr));
 } else {
   float3 q = float3(ang * 3.0, z * 4.0 - Time * 2.5, 0.0);
   float streak = pow(saturate(fbm(q, 4) * 0.5 + 0.5), 7.0);
