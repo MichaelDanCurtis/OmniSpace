@@ -77,6 +77,7 @@ export class Game {
   shields = 1
   heat = 0.2
   lastHit = -100
+  lastImpact = -100
   mode: FlightMode = 'normal'
   fa = true
   autopilot = false
@@ -541,6 +542,7 @@ export class Game {
     const st = this.sys.stations.get(best.id)!
     const bay = Math.floor(Math.random() * st.model.bays.length)
     this.docking = { stationId: best.id, bay, granted: true, expires: this.time + 300 }
+    this.apStage = 0
     this.target = best.id
     const name = this.sys.sys.stations.find((s) => s.id === best!.id)?.name
     this.msg(`${name}: Docking request granted. Proceed to bay ${st.model.bays[bay].label}.`, 'good')
@@ -1016,7 +1018,8 @@ export class Game {
     const speed = -vn
     this.vel.addScaledVector(n, -vn * 1.4)
     this.vel.multiplyScalar(0.6)
-    if (speed < 8) return
+    if (speed < 15 || this.time - this.lastImpact < 0.6) return
+    this.lastImpact = this.time
     this.damage(speed * 0.0022 * mult)
     audio.impact()
   }
@@ -1259,6 +1262,22 @@ export class Game {
           if (this.apStage === 0 && this.pos.distanceTo(p1) < 350) this.apStage = 1
           if (this.apStage === 1 && this.pos.distanceTo(p2) < 120) this.apStage = 2
           aim = this.apStage === 0 ? p1 : this.apStage === 1 ? p2 : p3
+          if (this.apStage === 0) {
+            // steer around the station if the straight line to the approach point crosses the hull
+            const st = this.sys.stations.get(t.id)!
+            const seg = p1.clone().sub(this.pos)
+            let minSdf = Infinity
+            for (let i = 1; i <= 24; i++) {
+              const q = this.pos.clone().addScaledVector(seg, i / 24)
+              minSdf = Math.min(minSdf, stationSDF(st.model.colliders, this.sys.stationLocal(t.id, q)!))
+            }
+            if (minSdf < 150) {
+              const rel = this.pos.clone().sub(st.abs)
+              const perp = rel.clone().addScaledVector(b.normal, -rel.dot(b.normal))
+              if (perp.lengthSq() < 1) perp.crossVectors(b.normal, Math.abs(b.normal.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0))
+              aim = st.abs.clone().addScaledVector(perp.normalize(), st.model.boundRadius + 600)
+            }
+          }
           const d = aim.distanceTo(this.pos)
           throttle = clamp(d / 1200, 0.12, this.apStage === 0 ? 1 : 0.4)
         } else {
@@ -1668,6 +1687,7 @@ export class Game {
       nav,
       hyper,
       markers: kept,
+      stick: { x: this.input.stick.x, y: this.input.stick.y, locked: this.input.mouseLocked },
       alert,
       cargo: cargoTotal(p),
       data: p.data,
@@ -1681,7 +1701,7 @@ export class Game {
       p.pos = [this.pos.x, this.pos.y, this.pos.z]
       p.quat = [this.quat.x, this.quat.y, this.quat.z, this.quat.w]
       p.systemId = this.sys.sys.id
-      if (this.mode !== 'docked') p.dockedAt = null
+      if (this.mode !== 'docked' && this.mode !== 'launching') p.dockedAt = null
     }
     writeSave(p)
   }

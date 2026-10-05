@@ -279,7 +279,16 @@ async def forge_system(draft: SystemDraft, model: Optional[str | Model] = None, 
         f"for Commander {draft.commander}, who is arriving now. Survey, design, then finalize."
     )
     ctx = ForgeContext(draft=draft)
-    await asyncio.wait_for(Runner.run(agent, prompt, context=ctx, max_turns=max_turns), timeout=timeout)
+    try:
+        await asyncio.wait_for(Runner.run(agent, prompt, context=ctx, max_turns=max_turns), timeout=timeout)
+    except Exception as e:  # noqa: BLE001
+        # Keep a usable partial system (e.g. the model ran out of turns or time after
+        # building most of it); otherwise surface the failure.
+        if draft.bodies and not draft.issues():
+            log.warning("forge for %s ended early (%s); keeping partial system", draft.star.id, type(e).__name__)
+            draft.log.append("Forge link unstable — committing partial survey")
+        else:
+            raise
     if not draft.finalized:
         issues = draft.issues()
         if issues:

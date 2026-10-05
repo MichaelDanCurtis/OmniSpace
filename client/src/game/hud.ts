@@ -73,6 +73,7 @@ export interface HudState {
   alert: string | null
   markers: { id: string; name: string; kind: string; sx: number; sy: number; dist: string }[]
   day: number
+  stick: { x: number; y: number; locked: boolean }
 }
 
 export const useHud = create<HudState>(() => ({
@@ -120,6 +121,7 @@ export const useHud = create<HudState>(() => ({
   alert: null,
   markers: [],
   day: 0,
+  stick: { x: 0, y: 0, locked: false },
 }))
 
 export function fmtDist(m: number): string {

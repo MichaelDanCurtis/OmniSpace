@@ -44,7 +44,7 @@ export function Hud({ game }: { game: Game }) {
         FORWARD
       </div>
       <Markers s={s} />
-      <Reticle />
+      <Reticle stick={s.stick} />
       {s.mode !== 'hyperspace' && <Messages s={s} />}
       <ModeBar s={s} />
       <Dashboard s={s} game={game} />
@@ -73,9 +73,11 @@ function Objective({ s }: { s: HudState }) {
   )
 }
 
-function Reticle() {
+function Reticle({ stick }: { stick: HudState['stick'] }) {
   return (
     <svg className="reticle" width="420" height="300" viewBox="-210 -150 420 300">
+      {stick.locked && <circle cx={stick.x * 60} cy={stick.y * 60} r="3.5" fill="#ffb347" opacity="0.9" />}
+      {stick.locked && <circle r="60" fill="none" stroke="rgba(255,179,71,0.18)" strokeDasharray="2 6" />}
       <circle r="20" fill="none" stroke="rgba(230,240,250,0.85)" strokeWidth="1.5" />
       <line x1="-36" y1="0" x2="-26" y2="0" stroke="rgba(230,240,250,0.8)" strokeWidth="1.5" />
       <line x1="26" y1="0" x2="36" y2="0" stroke="rgba(230,240,250,0.8)" strokeWidth="1.5" />

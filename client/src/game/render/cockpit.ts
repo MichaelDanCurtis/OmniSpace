@@ -54,7 +54,7 @@ export class Cockpit {
     const dash = quad(new THREE.Vector3(-W, yBot, zBot), new THREE.Vector3(W, yBot, zBot), new THREE.Vector3(W, yTop, zTop), new THREE.Vector3(-W, yTop, zTop))
     this.group.add(new THREE.Mesh(dash, frame))
     // top hood lip
-    const hood = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.045, 0.22), frame)
+    const hood = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.045, 0.22), dark)
     hood.position.set(0, yTop + 0.012, zTop + 0.04)
     this.group.add(hood)
     const hoodStrip = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.004, 0.006), this.strips)

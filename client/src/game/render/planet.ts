@@ -45,11 +45,11 @@ void main(){
   vec3 col; vec3 emis = vec3(0.0); float spec = 0.0; float land = 0.0;
   if (uType == 9 || uType == 10 || uType == 8) {
     float giant = uType == 10 ? 0.55 : 1.0;
-    float warp = fbm(sp * vec3(1.6, 5.0, 1.6), 5);
-    float lat = p.y + warp * 0.06 * (0.6 + uBands);
-    float bands = sin(lat * (9.0 + uBands * 14.0) * 3.14159 + uSeed * 3.0) * 0.5 + 0.5;
-    float fine = fbm(vec3(lat * 40.0, sp.x * 1.5, sp.z * 1.5), 4) * 0.5 + 0.5;
-    float m = mix(0.5, bands, uBands * giant) * 0.75 + fine * 0.25;
+    float warp = fbm(sp * vec3(1.3, 4.0, 1.3), 4);
+    float lat = p.y + warp * 0.035 * (0.6 + uBands);
+    float bands = sin(lat * (8.0 + uBands * 10.0) * 3.14159 + uSeed * 3.0) * 0.5 + 0.5;
+    float fine = fbm(vec3(lat * 60.0, sp.x * 0.45, sp.z * 0.45), 4) * 0.5 + 0.5;
+    float m = mix(0.5, bands, uBands * giant) * 0.65 + fine * 0.35;
     col = mix(uC0, uC1, smoothstep(0.15, 0.6, m));
     col = mix(col, uC2, smoothstep(0.55, 0.95, m + fine * 0.15));
     // great storm
