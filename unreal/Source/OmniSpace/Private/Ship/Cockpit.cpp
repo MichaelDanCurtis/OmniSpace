@@ -56,25 +56,25 @@ void OmniCockpit::Build(AActor* Owner, USceneComponent* Parent)
 	// Camera sits at the origin looking +X with a 70 deg horizontal FOV (~42 deg vertical), so
 	// anything that should be on screen must lie within ~35 deg sideways and ~21 deg up/down.
 	// --- dashboard: a raked slab across the bottom of the view with three screens
-	Part(Owner, Parent, Cube, FVector(1.25, 0, -0.50), FRotator(-16, 0, 0), FVector(0.55, 2.4, 0.08), Hull, Dark, 0.5f);
-	Part(Owner, Parent, Cube, FVector(1.52, 0, -0.42), FRotator(-16, 0, 0), FVector(0.05, 2.44, 0.05), Hull, Trim, 0.2f);
+	Part(Owner, Parent, Cube, FVector(1.25, 0, -0.34), FRotator(-16, 0, 0), FVector(0.55, 2.4, 0.08), Hull, Dark, 0.5f);
+	Part(Owner, Parent, Cube, FVector(1.52, 0, -0.26), FRotator(-16, 0, 0), FVector(0.05, 2.44, 0.05), Hull, Trim, 0.2f);
 	for (int i = -1; i <= 1; i++)
 	{
-		Part(Owner, Parent, Cube, FVector(1.22, i * 0.62, -0.455), FRotator(-16, 0, 0), FVector(0.34, 0.50, 0.012), Em, Screen);
-		Part(Owner, Parent, Cube, FVector(1.40, i * 0.62, -0.405), FRotator(-16, 0, 0), FVector(0.01, 0.46, 0.006), Em, i == 0 ? Amber : Cyan);
+		Part(Owner, Parent, Cube, FVector(1.22, i * 0.62, -0.295), FRotator(-16, 0, 0), FVector(0.34, 0.50, 0.012), Em, Screen);
+		Part(Owner, Parent, Cube, FVector(1.40, i * 0.62, -0.245), FRotator(-16, 0, 0), FVector(0.01, 0.46, 0.006), Em, i == 0 ? Amber : Cyan);
 	}
-	Part(Owner, Parent, Cube, FVector(1.53, 0, -0.395), FRotator(-16, 0, 0), FVector(0.01, 2.3, 0.004), Em, Cyan);
+	Part(Owner, Parent, Cube, FVector(1.53, 0, -0.235), FRotator(-16, 0, 0), FVector(0.01, 2.3, 0.004), Em, Cyan);
 	// --- side consoles at the edges of the view
 	for (int s = -1; s <= 1; s += 2)
 	{
-		Part(Owner, Parent, Cube, FVector(0.95, s * 0.85, -0.52), FRotator(0, 0, s * 14.0), FVector(0.8, 0.30, 0.10), Hull, Dark, 0.4f);
-		Part(Owner, Parent, Cube, FVector(0.95, s * 0.86, -0.465), FRotator(0, 0, s * 14.0), FVector(0.6, 0.20, 0.01), Em, Screen);
-		Part(Owner, Parent, Cube, FVector(0.95, s * 0.97, -0.44), FRotator(0, 0, s * 14.0), FVector(0.7, 0.008, 0.006), Em, Amber);
+		Part(Owner, Parent, Cube, FVector(0.95, s * 0.85, -0.40), FRotator(0, 0, s * 14.0), FVector(0.8, 0.30, 0.10), Hull, Dark, 0.4f);
+		Part(Owner, Parent, Cube, FVector(0.95, s * 0.86, -0.345), FRotator(0, 0, s * 14.0), FVector(0.6, 0.20, 0.01), Em, Screen);
+		Part(Owner, Parent, Cube, FVector(0.95, s * 0.97, -0.32), FRotator(0, 0, s * 14.0), FVector(0.7, 0.008, 0.006), Em, Amber);
 	}
 	// --- canopy frame: sills, A-pillars up the sides, top rail, nose bar across the lower third
-	const FVector SillL(1.45, -1.02, -0.46), SillR(1.45, 1.02, -0.46);
+	const FVector SillL(1.45, -1.02, -0.30), SillR(1.45, 1.02, -0.30);
 	const FVector TopL(1.25, -0.78, 0.42), TopR(1.25, 0.78, 0.42);
-	const FVector NoseL(1.95, -0.58, -0.44), NoseR(1.95, 0.58, -0.44);
+	const FVector NoseL(1.95, -0.58, -0.33), NoseR(1.95, 0.58, -0.33);
 	Beam(Owner, Parent, SillL, NoseL, 0.07, 0.07, Hull, Frame);
 	Beam(Owner, Parent, SillR, NoseR, 0.07, 0.07, Hull, Frame);
 	Beam(Owner, Parent, SillL, TopL, 0.06, 0.06, Hull, Frame);
@@ -83,8 +83,8 @@ void OmniCockpit::Build(AActor* Owner, USceneComponent* Parent)
 	Beam(Owner, Parent, NoseL, NoseR, 0.05, 0.04, Hull, Frame);
 	Beam(Owner, Parent, TopL, FVector(0.4, -1.0, 0.75), 0.08, 0.08, Hull, Frame);
 	Beam(Owner, Parent, TopR, FVector(0.4, 1.0, 0.75), 0.08, 0.08, Hull, Frame);
-	Beam(Owner, Parent, SillL, FVector(0.4, -1.15, -0.5), 0.09, 0.09, Hull, Frame);
-	Beam(Owner, Parent, SillR, FVector(0.4, 1.15, -0.5), 0.09, 0.09, Hull, Frame);
+	Beam(Owner, Parent, SillL, FVector(0.4, -1.15, -0.34), 0.09, 0.09, Hull, Frame);
+	Beam(Owner, Parent, SillR, FVector(0.4, 1.15, -0.34), 0.09, 0.09, Hull, Frame);
 	// --- overhead panel just above the top rail with a row of switch lights
 	Part(Owner, Parent, Cube, FVector(1.0, 0, 0.55), FRotator(20, 0, 0), FVector(0.45, 1.3, 0.07), Hull, Dark, 0.4f);
 	for (int i = -3; i <= 3; i++)

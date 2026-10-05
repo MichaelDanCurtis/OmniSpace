@@ -225,9 +225,9 @@ float band = abs(dot(d, gn));
 float3 gd = d + Seed;
 float dust = fbm(gd * 2.2, 5) * 0.5 + 0.5;
 float lanes = fbm(gd * 7.0 + 3.0, 4) * 0.5 + 0.5;
-float mw = smoothstep(0.42, 0.0, band) * (0.35 + 0.65 * dust);
+float mw = smoothstep(0.38, 0.0, band) * (0.3 + 0.7 * dust * dust);
 mw *= 1.0 - 0.75 * smoothstep(0.35, 0.75, lanes) * smoothstep(0.25, 0.0, band);
-float3 col = float3(0.78, 0.72, 0.62) * mw * 0.28;
+float3 col = float3(0.78, 0.72, 0.62) * mw * 0.13;
 // faint nebulae
 // faint nebulae: sparse, wispy, mostly hidden in the galactic band
 float neb = pow(saturate(fbm(gd * 1.3 + 11.0, 5) * 0.5 + 0.5), 5.0) * (0.3 + 0.7 * smoothstep(0.6, 0.0, band));
