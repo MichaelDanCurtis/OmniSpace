@@ -1,0 +1,282 @@
+{
+ "id": "kelvar",
+ "name": "Kelvar",
+ "source": "authored",
+ "discoveredBy": "Nexus Astra Survey Wing",
+ "star": {
+  "id": "kelvar",
+  "name": "Kelvar",
+  "cls": "G",
+  "pos": [
+   -24180,
+   12,
+   6420
+  ],
+  "temperature": 5650,
+  "radiusSolar": 1.04,
+  "massSolar": 1.02,
+  "luminosity": 0.9888953160565551,
+  "color": "#fff0e3",
+  "ageGyr": 4.1,
+  "settlement": 1,
+  "region": "Tanaran Reach"
+ },
+ "starFlavor": "G-type yellow star",
+ "profile": {
+  "description": "Capital system of the Tanaran Reach and headquarters of the Nexus Astra Combine.",
+  "lore": "Settled three centuries ago by the first Combine arkships, Kelvar grew rich on the volatile ices of Tanara VI. Every trade lane in the Reach eventually leads back to Tanara Station.",
+  "faction": "Nexus Astra Combine",
+  "government": "Corporate",
+  "economy": "High Tech",
+  "security": "high",
+  "population": 8400000000,
+  "danger": 0
+ },
+ "bodies": [
+  {
+   "id": "ember",
+   "name": "Ember",
+   "kind": "planet",
+   "type": "lava",
+   "parent": "star",
+   "orbitM": 50863276038,
+   "phase": 1.1,
+   "inclination": 0.02,
+   "radiusM": 2900000,
+   "palette": [
+    "#140b08",
+    "#3a1a10",
+    "#ff6a20"
+   ],
+   "atmosphere": null,
+   "tilt": 0.05,
+   "temperatureK": 480,
+   "gravityG": 0.42,
+   "description": "A tidally locked furnace world. Its night side is mined by automated crawlers for rare metals."
+  },
+  {
+   "id": "halcyon",
+   "name": "Halcyon",
+   "kind": "planet",
+   "type": "earthlike",
+   "parent": "star",
+   "orbitM": 152589828114,
+   "phase": 2.4,
+   "inclination": -0.01,
+   "radiusM": 6420000,
+   "palette": [
+    "#0f3a66",
+    "#3f7d3c",
+    "#d6c79a"
+   ],
+   "atmosphere": "#6fb0ff",
+   "clouds": 0.55,
+   "tilt": 0.4,
+   "temperatureK": 288,
+   "gravityG": 1.02,
+   "description": "The garden capital of the Reach: temperate continents, deep oceans and eight billion citizens."
+  },
+  {
+   "id": "tanara",
+   "name": "Tanara VI",
+   "kind": "planet",
+   "type": "ice_giant",
+   "parent": "star",
+   "orbitM": 493672973310,
+   "phase": 0.6,
+   "inclination": 0.01,
+   "radiusM": 25200000,
+   "palette": [
+    "#5d87a8",
+    "#a6c8de",
+    "#eef6fb"
+   ],
+   "atmosphere": "#bfe2ff",
+   "bands": 0.75,
+   "tilt": 0.32,
+   "temperatureK": 92,
+   "gravityG": 1.31,
+   "rings": {
+    "innerM": 33000000,
+    "outerM": 64000000,
+    "color": "#d6dbe0",
+    "opacity": 0.85
+   },
+   "description": "A pale ice giant whose methane-rich atmosphere fuels half the Reach. Its broad rings are mined for water ice."
+  },
+  {
+   "id": "orin",
+   "name": "Orin",
+   "kind": "moon",
+   "type": "barren",
+   "parent": "tanara",
+   "orbitM": 150000000,
+   "phase": 3.32,
+   "inclination": 1.25,
+   "radiusM": 2600000,
+   "palette": [
+    "#55524f",
+    "#8c8884",
+    "#c8c4be"
+   ],
+   "atmosphere": null,
+   "temperatureK": 88,
+   "gravityG": 0.16,
+   "description": "A cratered grey moon hosting the Combine deep-space listening array."
+  },
+  {
+   "id": "sil",
+   "name": "Sil",
+   "kind": "moon",
+   "type": "ice",
+   "parent": "tanara",
+   "orbitM": 240000000,
+   "phase": 2.2,
+   "inclination": -0.1,
+   "radiusM": 900000,
+   "palette": [
+    "#9fb6c6",
+    "#d6e6ef",
+    "#ffffff"
+   ],
+   "atmosphere": null,
+   "temperatureK": 80,
+   "gravityG": 0.08,
+   "description": "A small ice moon riddled with geysers."
+  },
+  {
+   "id": "vashti",
+   "name": "Vashti",
+   "kind": "planet",
+   "type": "gas_giant",
+   "parent": "star",
+   "orbitM": 1286541688020,
+   "phase": 4.2,
+   "inclination": 0.03,
+   "radiusM": 66000000,
+   "palette": [
+    "#7a5236",
+    "#c79a68",
+    "#f1e2c4"
+   ],
+   "atmosphere": "#f0d0a0",
+   "bands": 1,
+   "tilt": 0.08,
+   "temperatureK": 60,
+   "gravityG": 2.4,
+   "description": "An amber gas giant with a storm system three times the width of Halcyon."
+  },
+  {
+   "id": "thule",
+   "name": "Thule",
+   "kind": "planet",
+   "type": "ice",
+   "parent": "star",
+   "orbitM": 2842359543300,
+   "phase": 3.3,
+   "inclination": 0.05,
+   "radiusM": 3100000,
+   "palette": [
+    "#8aa2b6",
+    "#cadced",
+    "#ffffff"
+   ],
+   "atmosphere": null,
+   "temperatureK": 41,
+   "gravityG": 0.3,
+   "description": "A frozen outer world and the edge of Combine-patrolled space."
+  }
+ ],
+ "stations": [
+  {
+   "id": "tanara-station",
+   "name": "Tanara Station",
+   "kind": "spire",
+   "parent": "tanara",
+   "orbitM": 92000000,
+   "phase": 4.9,
+   "inclination": 0.22,
+   "faction": "Nexus Astra Combine",
+   "economy": "High Tech",
+   "services": [
+    "refuel",
+    "repair",
+    "market",
+    "cartographics",
+    "missions"
+   ],
+   "tagline": "Trade makes a brighter tomorrow",
+   "description": "Flagship trade spire of the Nexus Astra Combine. Forty thousand residents, three concourses and the busiest docking ring in the Reach."
+  },
+  {
+   "id": "halcyon-gateway",
+   "name": "Halcyon Gateway",
+   "kind": "ring",
+   "parent": "halcyon",
+   "orbitM": 14000000,
+   "phase": 1.9,
+   "inclination": 0.15,
+   "faction": "Kelvar Directorate",
+   "economy": "Tourism",
+   "services": [
+    "refuel",
+    "repair",
+    "market",
+    "cartographics",
+    "missions"
+   ],
+   "tagline": "Further, together",
+   "description": "The great orbital ring above Halcyon — seat of the Kelvar Directorate and gateway to the capital."
+  },
+  {
+   "id": "ember-works",
+   "name": "Ember Foundry",
+   "kind": "outpost",
+   "parent": "ember",
+   "orbitM": 6200000,
+   "phase": 0.4,
+   "inclination": 0.1,
+   "faction": "Nexus Astra Combine",
+   "economy": "Refinery",
+   "services": [
+    "refuel",
+    "repair",
+    "market"
+   ],
+   "tagline": "Forged in fire",
+   "description": "An automated refinery outpost skimming metals from the night side of Ember."
+  }
+ ],
+ "belts": [
+  {
+   "id": "drift",
+   "name": "Kelvar Drift",
+   "parent": "star",
+   "radiusM": 807828501780,
+   "widthM": 74798935350,
+   "composition": "metallic"
+  }
+ ],
+ "pois": [
+  {
+   "id": "calloway",
+   "name": "Derelict Freighter Calloway",
+   "kind": "derelict",
+   "parent": "halcyon",
+   "offsetM": 40000000,
+   "phase": 4,
+   "description": "A Combine bulk hauler that went dark forty years ago. Its black box was never recovered.",
+   "reward": 4000
+  },
+  {
+   "id": "orin-signal",
+   "name": "Orin Listening Array",
+   "kind": "beacon",
+   "parent": "orin",
+   "offsetM": 6000000,
+   "phase": 1.2,
+   "description": "Combine deep-space listening array. Something has been answering it.",
+   "reward": 2500
+  }
+ ]
+}
