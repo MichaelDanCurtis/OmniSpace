@@ -146,12 +146,8 @@ void UForgeSubsystem::LoadSystem(const FStarDescriptor& Star, const TArray<FStar
 	if (Pending.Contains(Id)) return;
 	Pending.Add(Id);
 
-	if (!Status.bOnline)
-	{
-		UE_LOG(LogOmniSpace, Warning, TEXT("Forge offline; cannot load %s"), *Id);
-		Finish(Id, false, FStarSystemData());
-		return;
-	}
+	// Don't gate on the health check (it may not have answered yet at startup): just try;
+	// a dead server fails the request and Finish() reports it.
 	auto Req = MakeRequest(FString::Printf(TEXT("/api/systems/%s/generate"), *FGenericPlatformHttp::UrlEncode(Id)), TEXT("POST"));
 	Req->SetContentAsString(JsonToString(GenerateBody(Star, Neighbors, Commander, false)));
 	TWeakObjectPtr<UForgeSubsystem> Weak(this);
