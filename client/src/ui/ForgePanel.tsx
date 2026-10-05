@@ -29,13 +29,18 @@ export function ForgePanel({ compact = false }: { compact?: boolean }) {
       .catch(() => setModels([]))
   }, [forge.auth, forge.signedIn])
 
+  const [link, setLink] = useState<string | null>(null)
   const signIn = async () => {
     setBusy(true)
     setErr(null)
+    // open the tab synchronously (inside the click) so Safari's popup blocker allows it
+    const tab = window.open('about:blank', '_blank')
     try {
       const url = await chatgptSignIn()
-      window.open(url, '_blank', 'noopener')
+      if (tab) tab.location.href = url
+      else setLink(url)
     } catch (e) {
+      tab?.close()
       setErr(String((e as Error).message ?? e))
     } finally {
       setBusy(false)
@@ -48,7 +53,7 @@ export function ForgePanel({ compact = false }: { compact?: boolean }) {
   else if (forge.ai && forge.auth === 'scripted') text = 'STELLAR FORGE ONLINE · scripted demo agent (no API calls)'
   else if (forge.ai) text = `STELLAR FORGE ONLINE · OpenAI API · ${forge.model ?? 'default model'}`
   else if (forge.online) text = forge.reason ?? 'Stellar Forge server online · AI disabled'
-  else text = 'Stellar Forge offline · onboard procedural generator active'
+  else text = forge.reason ?? 'Stellar Forge offline · onboard procedural generator active'
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -73,8 +78,12 @@ export function ForgePanel({ compact = false }: { compact?: boolean }) {
               value={selected}
               onChange={async (e) => {
                 setSelected(e.target.value)
-                await chatgptSetModel(e.target.value)
-                await refresh()
+                try {
+                  await chatgptSetModel(e.target.value)
+                  await refresh()
+                } catch (x) {
+                  setErr(String((x as Error).message ?? x))
+                }
               }}
             >
               <option value="">Auto (fastest)</option>
@@ -96,6 +105,11 @@ export function ForgePanel({ compact = false }: { compact?: boolean }) {
             Sign out
           </button>
         </div>
+      )}
+      {link && (
+        <a href={link} target="_blank" rel="noreferrer" style={{ color: 'var(--cyan)', fontSize: 12, textTransform: 'none' }}>
+          Your browser blocked the sign-in tab — click here to sign in with ChatGPT
+        </a>
       )}
       {err && <div style={{ color: 'var(--red)', fontSize: 12, textTransform: 'none' }}>{err}</div>}
     </div>

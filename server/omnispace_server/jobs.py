@@ -25,6 +25,7 @@ class Job:
     started: float = field(default_factory=time.time)
     finished: Optional[float] = None
     task: Optional[asyncio.Task[Any]] = None
+    prefetch: bool = False
 
     def public(self) -> dict[str, Any]:
         return {
@@ -43,6 +44,9 @@ class JobManager:
         self.model_override = model_override
         self.runtime_factory = runtime_factory
         self.sem = asyncio.Semaphore(max_concurrent)
+        # prefetches (route plotted, not jumping yet) share a single lane so they never
+        # starve the jump the pilot is actually waiting on
+        self.prefetch_sem = asyncio.Semaphore(1)
         self.timeout = float(os.environ.get("OMNISPACE_TIMEOUT", "240"))
 
     def model_label(self) -> str:
@@ -54,14 +58,24 @@ class JobManager:
         sid = req.star.id
         job = self.jobs.get(sid)
         if job and job.status in ("generating", "ready"):
+            if not req.prefetch:
+                job.prefetch = False  # the pilot is now jumping: promote it
             return job
         draft = SystemDraft(star=req.star, neighbors=req.neighbors, commander=req.commander)
         draft.neighbor_summaries = self._neighbor_context(req)
         draft.log.append(f"Stellar Forge engaged for {req.star.name}")
         job = Job(system_id=sid, draft=draft)
+        job.prefetch = req.prefetch
         self.jobs[sid] = job
         job.task = asyncio.create_task(self._run(job))
         return job
+
+    def cancel(self, system_id: str) -> None:
+        job = self.jobs.get(system_id)
+        if job and job.status == "generating" and job.task:
+            job.task.cancel()
+            job.status = "cancelled"
+            job.finished = time.time()
 
     def _neighbor_context(self, req: GenerateRequest) -> list[dict[str, Any]]:
         ids = [n.id for n in req.neighbors[:12]]
@@ -82,7 +96,16 @@ class JobManager:
 
     async def _run(self, job: Job) -> None:
         assert job.draft is not None
+        holding_lane = False
         try:
+            # at most one prefetch runs at a time; a prefetch that gets promoted (the pilot
+            # actually jumps) stops waiting for the lane immediately
+            while job.prefetch:
+                if not self.prefetch_sem.locked():
+                    await self.prefetch_sem.acquire()
+                    holding_lane = True
+                    break
+                await asyncio.sleep(0.3)
             async with self.sem:
                 if self.runtime_factory is not None:
                     runtime = await self.runtime_factory()
@@ -99,4 +122,6 @@ class JobManager:
             job.error = f"{type(e).__name__}: {e}"[:500]
             job.draft.log.append("Forge link lost — falling back to onboard survey computer")
         finally:
-            job.finished = time.time()
+            if holding_lane:
+                self.prefetch_sem.release()
+            job.finished = job.finished or time.time()

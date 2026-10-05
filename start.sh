@@ -30,11 +30,17 @@ if [ ! -f server/.venv/.installed ] || [ server/requirements.txt -nt server/.ven
   touch server/.venv/.installed
 fi
 
-if [ ! -f client/dist/index.html ]; then
+NEEDS_BUILD=0
+[ -f client/dist/index.html ] || NEEDS_BUILD=1
+# rebuild when client sources changed since the last build (only if Node is available)
+if [ "$NEEDS_BUILD" = 0 ] && command -v npm >/dev/null 2>&1 && [ -n "$(find client/src client/index.html -newer client/dist/index.html -print -quit 2>/dev/null)" ]; then
+  NEEDS_BUILD=1
+fi
+if [ "$NEEDS_BUILD" = 1 ]; then
   if command -v npm >/dev/null 2>&1; then
     echo "▸ Building the game client…"
-    (cd client && npm install && npm run build)
-  else
+    (cd client && { [ -d node_modules ] || npm install; } && npm run build)
+  elif [ ! -f client/dist/index.html ]; then
     echo "client/dist is missing and npm is not installed. Install Node.js 20+ (brew install node) and re-run."
     exit 1
   fi

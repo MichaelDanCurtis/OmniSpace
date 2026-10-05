@@ -8,7 +8,10 @@ const TYPE_INDEX: Record<PlanetType, number> = {
 
 let sphereGeo: THREE.SphereGeometry | null = null
 function unitSphere() {
-  if (!sphereGeo) sphereGeo = new THREE.SphereGeometry(1, 160, 110)
+  if (!sphereGeo) {
+    sphereGeo = new THREE.SphereGeometry(1, 160, 110)
+    sphereGeo.userData.shared = true
+  }
   return sphereGeo
 }
 

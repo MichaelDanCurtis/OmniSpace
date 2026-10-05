@@ -72,6 +72,7 @@ export function GalaxyMap({ game }: { game: Game }) {
   const range = jumpRange(game.player)
   const api = useRef<{ select: (s: StarDescriptor | null) => void; frame: (s: StarDescriptor) => void; setOverview: (o: boolean) => void } | null>(null)
   const stars = useMemo(() => starsNear(focus.pos, LOCAL_RADIUS), [focus])
+  const flagAttr = useRef<THREE.BufferAttribute | null>(null)
 
   useEffect(() => {
     void chartedSystems().then((list) => setCharted(new Map(list.map((c) => [c.id, c]))))
@@ -115,7 +116,9 @@ export function GalaxyMap({ game }: { game: Game }) {
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3))
     geo.setAttribute('aColor', new THREE.BufferAttribute(col, 3))
     geo.setAttribute('aSize', new THREE.BufferAttribute(size, 1))
-    geo.setAttribute('aFlag', new THREE.BufferAttribute(flag, 1))
+    const flagBuf = new THREE.BufferAttribute(flag, 1)
+    geo.setAttribute('aFlag', flagBuf)
+    flagAttr.current = flagBuf
     const mat = new THREE.ShaderMaterial({ vertexShader: PT_VERT, fragmentShader: PT_FRAG, transparent: true, depthWrite: false, uniforms: { uScale: { value: renderer.getPixelRatio() * 1.3 } } })
     const points = new THREE.Points(geo, mat)
     scene.add(points)
@@ -300,13 +303,29 @@ export function GalaxyMap({ game }: { game: Game }) {
       renderer.domElement.removeEventListener('pointerdown', onDown)
       renderer.domElement.removeEventListener('pointerup', onUp)
       controls.dispose()
+      scene.traverse((o) => {
+        const m = o as THREE.Mesh
+        m.geometry?.dispose()
+        const mat = m.material as THREE.Material | undefined
+        mat?.dispose?.()
+      })
       renderer.dispose()
+      renderer.forceContextLoss()
       renderer.domElement.remove()
       pool.forEach((p) => p.remove())
       api.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stars, charted])
+  }, [stars])
+
+  // charted flags arrive after the scene is built: update the point attribute in place
+  useEffect(() => {
+    const flags = flagAttr.current
+    if (!flags) return
+    const visited = new Set(game.player.visited)
+    stars.forEach((s, i) => flags.setX(i, visited.has(s.id) ? 2 : charted.has(s.id) ? 1 : 0))
+    flags.needsUpdate = true
+  }, [charted, stars, game])
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase()

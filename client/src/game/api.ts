@@ -47,7 +47,13 @@ async function fetchJson<T>(url: string, init?: RequestInit, timeoutMs = 8000): 
   }
 }
 
+export const OFFLINE_BUILD = import.meta.env.VITE_OFFLINE === '1'
+
 export async function checkForge(): Promise<ForgeStatus> {
+  if (OFFLINE_BUILD) {
+    status = { online: false, ai: false, reason: 'Web preview · run OmniSpace locally (./start.sh) to let the AI forge new systems' }
+    return status
+  }
   try {
     type H = { enabled: boolean; model?: string; reason?: string; auth?: ForgeStatus['auth']; account?: string | null; signed_in?: boolean; can_sign_in?: boolean; sharing?: boolean }
     const h = await fetchJson<{ ok: boolean; ai: H }>(`${API}/health`, undefined, 2500)

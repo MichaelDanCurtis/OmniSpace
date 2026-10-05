@@ -1,4 +1,5 @@
 import { HOME_STAR, distLy, getStar, starsNear } from './galaxy'
+import { previewSystem } from './api'
 import { COMMODITIES, ROMAN } from './lore'
 import { Rng, hashString } from './rng'
 import type { StarDescriptor, Station } from './types'
@@ -58,7 +59,9 @@ export function missionBoard(st: Station, sysStar: StarDescriptor, sysStations: 
   const rng = new Rng(hashString(`${st.id}:missions:${day}`))
   const out: Mission[] = []
   const neighbors = starsNear(sysStar.pos, 26)
-    .filter((s) => s.id !== sysStar.id && s.settlement > 0.45)
+    .filter((s) => s.id !== sysStar.id && s.settlement > 0.45 && !['NS', 'L', 'WD', 'O'].includes(s.cls))
+    // only systems that have (or, if uncharted, will have) a station to deliver to
+    .filter((s) => previewSystem(s).stations.length > 0)
     .sort((a, b) => distLy(a, sysStar) - distLy(b, sysStar))
   if (sysStar.id !== HOME_STAR.id && distLy(sysStar, HOME_STAR) < 26) neighbors.unshift(HOME_STAR)
   const n = rng.int(3, 5)

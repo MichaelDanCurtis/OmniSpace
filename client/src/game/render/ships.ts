@@ -6,6 +6,7 @@ import * as THREE from 'three'
 import { Rng } from '../rng'
 import type { Bay, StationModel } from './station'
 import { glowTexture } from './star'
+import { disposeTree } from './dispose'
 import { panelTexture } from './textures'
 
 let shared: { hull: THREE.Material; dark: THREE.Material; cont: THREE.Material[]; cab: THREE.Material; glow: THREE.Material } | null = null
@@ -19,6 +20,7 @@ function mats() {
     cab: new THREE.MeshStandardMaterial({ color: '#2a2f36', emissive: new THREE.Color('#ffd7a0'), emissiveIntensity: 0.25, metalness: 0.6, roughness: 0.4 }),
     glow: new THREE.MeshBasicMaterial({ color: new THREE.Color('#ff3020').multiplyScalar(2) }),
   }
+  for (const m of [shared.hull, shared.dark, shared.cab, shared.glow, ...shared.cont]) m.userData.shared = true
   return shared
 }
 
@@ -184,6 +186,7 @@ export class Traffic {
     if (done.length) {
       for (const n of done) {
         this.group.remove(n.obj)
+        disposeTree(n.obj)
         this.spawn(!n.inbound, false)
       }
       this.npcs = this.npcs.filter((n) => !n.done)
@@ -196,6 +199,7 @@ export class Traffic {
   }
 
   dispose() {
+    disposeTree(this.group)
     this.group.clear()
     this.npcs = []
   }

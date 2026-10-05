@@ -89,6 +89,7 @@ export class Game {
   docking: { stationId: string; bay: number; granted: boolean; expires: number } | null = null
   dockAnim: { from: THREE.Vector3; fromQ: THREE.Quaternion; t: number; stationId: string; bay: number } | null = null
   launchT = 0
+  scooping = false
   apStage = 0
   time = 0
   private last = performance.now()
@@ -145,9 +146,11 @@ export class Game {
   async start() {
     const forge = await checkForge()
     useHud.setState({ forge, commander: this.player.commander })
+    if (this.player.hull <= 0) this.applyRebuy()
     const star = getStar(this.player.systemId) ?? HOME_STAR
     const sys = await loadSystem(star, this.player.commander)
     this.enterSystem(sys, 'load')
+    window.addEventListener('pagehide', () => this.save())
     this.running = true
     this.last = performance.now()
     this.loop()
@@ -436,17 +439,17 @@ export class Game {
     return this.sys ? d.applyQuaternion(this.sys.skyTilt) : d
   }
 
-  engageJump() {
-    if (this.mode !== 'normal' && this.mode !== 'supercruise') return
+  engageJump(): boolean {
+    if (this.mode !== 'normal' && this.mode !== 'supercruise') return false
     const dest = this.nextJump()
     if (!dest) {
       this.msg('No hyperspace destination. Open the galaxy map (M) and plot a route.', 'warn')
       audio.deny()
-      return
+      return false
     }
     if (this.fsd) {
       this.cancelFsd('FSD charge cancelled')
-      return
+      return false
     }
     const cur = getStar(this.player.systemId) ?? HOME_STAR
     const d = distLy(cur, dest)
@@ -454,24 +457,25 @@ export class Game {
     if (d > range) {
       this.msg(`${dest.name} is out of range (${d.toFixed(1)} ly > ${range.toFixed(1)} ly)`, 'bad')
       audio.deny()
-      return
+      return false
     }
     const fuel = jumpFuel(d, range)
     if (this.player.fuel < fuel) {
       this.msg(`Insufficient fuel for jump (${fuel.toFixed(1)} t needed). Scoop a star or refuel.`, 'bad')
       audio.deny()
-      return
+      return false
     }
     if (this.mode === 'normal' && this.massLocked()) {
       this.msg('Mass locked — move away from the station', 'warn')
       audio.deny()
-      return
+      return false
     }
     this.gear = false
     this.fsd = { kind: 'jump', t: 0, dur: 5, dest: dest.id }
     prefetchSystem(dest, this.player.commander)
     audio.startCharge(5)
     this.msg(`Frame shift drive charging · destination ${dest.name}`, 'info')
+    return true
   }
 
   private cancelFsd(text: string) {
@@ -697,16 +701,33 @@ export class Game {
     const taken = new Set(this.player.missions.map((m) => m.id))
     return missionBoard(st, this.sys.sys.star, this.sys.sys.stations, this.day()).filter((m) => !taken.has(m.id))
   }
-  acceptMission(m: Mission) {
-    if (this.player.missions.length >= 6) return audio.deny()
+  acceptMission(m: Mission): boolean {
+    if (this.player.missions.length >= 6) {
+      this.msg('Contract limit reached (6 active)', 'warn')
+      audio.deny()
+      return false
+    }
     if (m.tons > SHIP.cargoCap - cargoTotal(this.player)) {
       this.msg('Not enough cargo space for this contract', 'warn')
-      return audio.deny()
+      audio.deny()
+      return false
     }
     this.player.missions.push(m)
     if (m.tons) this.player.missionCargo[m.id] = m.tons
     this.msg(`Contract accepted: ${m.title}`, 'good')
     audio.confirm()
+    this.pushHudStatic()
+    return true
+  }
+
+  abandonMission(id: string) {
+    const p = this.player
+    const m = p.missions.find((x) => x.id === id)
+    if (!m) return
+    p.missions = p.missions.filter((x) => x.id !== id)
+    delete p.missionCargo[id]
+    p.credits = Math.max(0, p.credits - Math.round(m.reward * 0.1))
+    this.msg(`Contract abandoned: ${m.title} (−${Math.round(m.reward * 0.1).toLocaleString()} cr reputation fee)`, 'warn')
     this.pushHudStatic()
   }
 
@@ -856,6 +877,7 @@ export class Game {
       if (this.fsd.t >= this.fsd.dur) {
         if (this.fsd.kind === 'sc') {
           this.fsd = null
+          audio.stopCharge()
           this.mode = 'supercruise'
           this.scSpeed = Math.max(SC_MIN, this.vel.length())
           this.throttle = Math.max(this.throttle, 0.0)
@@ -871,6 +893,7 @@ export class Game {
             const aligned = fwd.angleTo(dir) < 0.2
             if (aligned) {
               this.fsd = null
+              audio.stopCharge()
               this.beginHyperspace(dest)
             } else {
               this.fsd.waitAlign = (this.fsd.waitAlign ?? 0) + dt
@@ -1041,12 +1064,15 @@ export class Game {
     if (this.player.hull <= 0 && this.mode !== 'destroyed') {
       this.mode = 'destroyed'
       this.fsd = null
+      audio.stopCharge()
       this.autopilot = false
       this.msg('Ship destroyed', 'bad')
+      this.applyRebuy()
     }
   }
 
-  respawn() {
+  /** Insurance rebuy: penalties are applied and saved the moment the ship dies. */
+  private applyRebuy() {
     const p = this.player
     p.cargo = {}
     p.missionCargo = {}
@@ -1054,11 +1080,18 @@ export class Game {
     p.credits = Math.max(0, p.credits - 2500)
     p.hull = 1
     p.fuel = SHIP.fuelMax
-    this.shields = 1
     const target = p.lastStation ?? { systemId: HOME_ID, stationId: 'tanara-station' }
     p.dockedAt = target.stationId
     p.dockedBay = 0
     p.systemId = target.systemId
+    p.pos = [0, 0, 0]
+    writeSave(p)
+  }
+
+  respawn() {
+    const p = this.player
+    this.shields = 1
+    const target = { systemId: p.systemId, stationId: p.dockedAt ?? 'tanara-station' }
     const star = getStar(target.systemId) ?? HOME_STAR
     void loadSystem(star, p.commander).then((sys) => {
       this.enterSystem(sys, 'load')
@@ -1119,7 +1152,7 @@ export class Game {
     }
     this.heat = clamp(0.2 + Math.max(0, 3 - ratio) * 0.35, 0, 1.2)
     if (this.heat > 0.95) this.damage(dt * 0.05 * (this.heat - 0.9) * 10)
-    useHud.setState({ flags: { ...useHud.getState().flags, scoop: scooping } })
+    this.scooping = scooping
     // emergency drop when too close to a body
     if (nearestBody && nearestBody.d < Math.max(nearestBody.R * 0.04, 30_000)) {
       this.msg(`Emergency drop! Too close to ${nearestBody.name}`, 'bad')
@@ -1238,7 +1271,10 @@ export class Game {
       const yawErr = Math.atan2(-local.x, -local.z)
       const pitchErr = Math.atan2(local.y, Math.hypot(local.x, local.z))
       const locked = this.mode === 'normal' && this.massLocked()
-      if (Math.hypot(yawErr, pitchErr) < 0.08 && !this.fsd && !locked) this.engageJump()
+      if (Math.hypot(yawErr, pitchErr) < 0.08 && !this.fsd && !locked && !this.engageJump()) {
+        this.autopilot = false
+        return null
+      }
       return { pitch: clamp(pitchErr * 3, -1, 1), yaw: clamp(yawErr * 3, -1, 1), throttle: locked ? 1 : this.mode === 'supercruise' ? 0 : 0.5 }
     }
     if (!this.target) return null
@@ -1295,6 +1331,10 @@ export class Game {
       } else {
         if (dist > 30_000) engageSC = true
         throttle = clamp(dist / 8000, 0.0, 1)
+        if (t.kind === 'star' && dist < t.radius * 8) {
+          engageSC = false
+          throttle = 0
+        }
         if ((t.kind === 'planet' || t.kind === 'moon') && dist - t.radius < t.radius * 3) {
           throttle = 0
           engageSC = false
@@ -1687,7 +1727,7 @@ export class Game {
       target,
       hyperTarget,
       fsd: this.fsd ? { kind: this.fsd.kind, progress: Math.min(1, this.fsd.t / this.fsd.dur), label: this.fsd.kind === 'sc' ? 'SUPERCRUISE' : 'HYPERSPACE' } : null,
-      flags: { autopilot: this.autopilot, fa: this.fa, navLock: !!this.target, gear: this.gear, massLock: this.mode === 'normal' && this.massLocked(), scoop: useHud.getState().flags.scoop && this.mode === 'supercruise' },
+      flags: { autopilot: this.autopilot, fa: this.fa, navLock: !!this.target, gear: this.gear, massLock: this.mode === 'normal' && this.massLocked(), scoop: this.scooping && this.mode === 'supercruise' },
       docking,
       objective: this.objective(),
       heading,
@@ -1705,6 +1745,7 @@ export class Game {
 
   save() {
     const p = this.player
+    if (this.mode === 'destroyed') return
     if (this.mode !== 'hyperspace' && this.sys) {
       p.pos = [this.pos.x, this.pos.y, this.pos.z]
       p.quat = [this.quat.x, this.quat.y, this.quat.z, this.quat.w]

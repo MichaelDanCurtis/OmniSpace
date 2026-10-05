@@ -216,6 +216,15 @@ function Contracts({ game, refresh }: { game: Game; refresh: () => void }) {
                 <div className="row">
                   <span className="reward">{m.reward.toLocaleString()} cr</span>
                   <span style={{ color: 'var(--text-dim)', fontSize: 12 }}>{m.distanceLy ? `${m.distanceLy} ly` : 'in system'}</span>
+                  <button
+                    className="btn small"
+                    onClick={() => {
+                      game.abandonMission(m.id)
+                      refresh()
+                    }}
+                  >
+                    Abandon
+                  </button>
                 </div>
               </div>
             ))}
@@ -235,8 +244,7 @@ function Contracts({ game, refresh }: { game: Game; refresh: () => void }) {
               <button
                 className="btn small primary"
                 onClick={() => {
-                  game.acceptMission(m)
-                  if (m.destSystem !== game.player.systemId) game.setHyperTarget(m.destSystem)
+                  if (game.acceptMission(m) && m.destSystem !== game.player.systemId) game.setHyperTarget(m.destSystem)
                   refresh()
                 }}
               >

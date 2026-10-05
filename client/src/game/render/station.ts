@@ -95,6 +95,7 @@ function blinkers(group: THREE.Object3D, positions: THREE.Vector3[], color: stri
 function sign(st: Station, w: number): THREE.Object3D {
   const tex = signTexture(st.name, st.tagline)
   const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.FrontSide, color: new THREE.Color(1.6, 1.6, 1.6) })
+  mat.userData.ownsMap = true
   const g = new THREE.Group()
   const front = new THREE.Mesh(new THREE.PlaneGeometry(w, w * 0.3125), mat)
   const back = front.clone()

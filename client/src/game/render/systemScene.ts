@@ -12,6 +12,7 @@ import { PlanetVisual } from './planet'
 import { makeFreighter, Traffic } from './ships'
 import { buildStation, type StationModel } from './station'
 import { glowTexture, StarVisual } from './star'
+import { disposeTree } from './dispose'
 
 export interface StationRuntime {
   id: string
@@ -97,7 +98,10 @@ export class SystemScene {
         f.traverse((o) => {
           const m = o as THREE.Mesh
           if ((m as unknown as THREE.Sprite).isSprite) o.visible = false
-          if (m.isMesh) m.material = (m.material as THREE.MeshStandardMaterial).clone()
+          if (m.isMesh) {
+            m.material = (m.material as THREE.MeshStandardMaterial).clone()
+            ;(m.material as THREE.Material).userData.shared = false
+          }
           if (m.isMesh) (m.material as THREE.MeshStandardMaterial).color?.multiplyScalar(0.45)
         })
         f.scale.setScalar(kind === 'derelict' ? 3 : rng.range(0.6, 1.4))
@@ -262,11 +266,8 @@ export class SystemScene {
 
   dispose() {
     for (const pv of this.planets.values()) pv.dispose()
+    disposeTree(this.root)
     for (const st of this.stations.values()) st.traffic.dispose()
-    this.root.traverse((o) => {
-      const m = o as THREE.Mesh
-      if (m.geometry) m.geometry.dispose()
-    })
     this.root.clear()
   }
 }

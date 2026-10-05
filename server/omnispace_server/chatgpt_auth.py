@@ -15,6 +15,7 @@ data/chatgpt_auth.json (mode 600) and refreshed automatically.
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import json
@@ -68,6 +69,7 @@ class ChatGPTAuth:
         self.transport = transport
         self.pending: dict[str, Pending] = {}
         self._discovery: Optional[dict[str, Any]] = None
+        self._refresh_lock = asyncio.Lock()
         self.data: dict[str, Any] = self._load()
 
     # ------------------------------------------------------------ storage
@@ -98,8 +100,11 @@ class ChatGPTAuth:
     def preferred_model(self) -> Optional[str]:
         return os.environ.get("OMNISPACE_MODEL") or self.data.get("model")
 
-    def set_model(self, slug: str) -> None:
-        self.data["model"] = slug
+    def set_model(self, slug: Optional[str]) -> None:
+        if slug:
+            self.data["model"] = slug
+        else:
+            self.data.pop("model", None)
         self._save()
 
     def logout(self) -> None:
@@ -206,18 +211,25 @@ class ChatGPTAuth:
         """A valid access token, refreshing it when it is about to expire."""
         if not self.signed_in:
             raise RuntimeError("Not signed in with ChatGPT")
-        if self.data.get("access_token") and time.time() < float(self.data.get("expires_at", 0)) - 120:
+        def fresh() -> bool:
+            return bool(self.data.get("access_token")) and time.time() < float(self.data.get("expires_at", 0)) - 120
+
+        if fresh():
             return self.data["access_token"]
-        if not self.data.get("refresh_token"):
-            raise RuntimeError("ChatGPT session expired; sign in again")
-        data = await self._token({
-            "grant_type": "refresh_token",
-            "client_id": self.data["client_id"],
-            "refresh_token": self.data["refresh_token"],
-            "resource": RESOURCE,
-        })
-        self._store_tokens(data)
-        return self.data["access_token"]
+        # One refresh at a time: refresh tokens may rotate, so concurrent jobs must not reuse one.
+        async with self._refresh_lock:
+            if fresh():
+                return self.data["access_token"]
+            if not self.data.get("refresh_token"):
+                raise RuntimeError("ChatGPT session expired; sign in again")
+            data = await self._token({
+                "grant_type": "refresh_token",
+                "client_id": self.data["client_id"],
+                "refresh_token": self.data["refresh_token"],
+                "resource": RESOURCE,
+            })
+            self._store_tokens(data)
+            return self.data["access_token"]
 
     async def models(self) -> list[dict[str, str]]:
         token = await self.access_token()

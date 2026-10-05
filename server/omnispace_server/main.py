@@ -94,7 +94,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="OmniSpace Stellar Forge", lifespan=lifespan)
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+# Only the Vite dev server needs cross-origin access; the game itself is same-origin.
+app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"], allow_methods=["*"], allow_headers=["*"])
 
 
 @app.get("/api/health")
@@ -149,9 +150,9 @@ def lock_in(system_id: str, system: StarSystem) -> dict[str, Any]:
     """Persist a client-generated (procedural) system so later visits stay consistent."""
     if system.id != system_id:
         raise HTTPException(400, "id mismatch")
-    job = app.state.jobs.jobs.get(system_id)
-    if job and job.status == "generating":
-        return {"stored": False, "reason": "AI generation in progress"}
+    # The client gave up waiting and committed its procedural version: that version wins,
+    # so cancel any generation still running for this system.
+    app.state.jobs.cancel(system_id)
     stored = app.state.store.put(system)
     return {"stored": stored}
 
@@ -213,18 +214,18 @@ async def chatgpt_models() -> dict[str, Any]:
 @app.post("/api/auth/chatgpt/model")
 def chatgpt_set_model(body: dict[str, str]) -> dict[str, Any]:
     slug = (body.get("slug") or "").strip()
-    if not slug:
-        raise HTTPException(400, "slug required")
-    auth.set_model(slug)
-    return {"ok": True, "model": slug}
+    auth.set_model(slug or None)
+    return {"ok": True, "model": slug or None}
 
 
 if DIST.exists():
     app.mount("/assets", StaticFiles(directory=DIST / "assets"), name="assets")
 
+    DIST_ROOT = DIST.resolve()
+
     @app.get("/{path:path}")
     def spa(path: str) -> FileResponse:
-        f = DIST / path
-        if path and f.is_file():
+        f = (DIST / path).resolve()
+        if path and f.is_file() and f.is_relative_to(DIST_ROOT):
             return FileResponse(f)
-        return FileResponse(DIST / "index.html")
+        return FileResponse(DIST_ROOT / "index.html")
