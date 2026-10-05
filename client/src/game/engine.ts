@@ -90,6 +90,7 @@ export class Game {
   dockAnim: { from: THREE.Vector3; fromQ: THREE.Quaternion; t: number; stationId: string; bay: number } | null = null
   launchT = 0
   scooping = false
+  lastThrottleInput = -100
   apStage = 0
   time = 0
   private last = performance.now()
@@ -339,6 +340,7 @@ export class Game {
         break
       case 'KeyC':
         this.throttle = 0.75
+        this.lastThrottleInput = this.time
         break
       case 'Digit1':
       case 'Digit2':
@@ -833,10 +835,14 @@ export class Game {
     const strafe = i.axis(['KeyQ'], ['KeyE'])
     const vert = i.axis(['KeyF'], ['KeyR'])
     const thr = i.axis(['KeyS'], ['KeyW'])
-    if (thr) this.throttle = clamp(this.throttle + thr * dt * 0.75, this.mode === 'supercruise' ? 0 : -0.5, 1)
+    if (thr) {
+      this.throttle = clamp(this.throttle + thr * dt * 0.75, this.mode === 'supercruise' ? 0 : -0.5, 1)
+      this.lastThrottleInput = this.time
+    }
     if (i.wheel) {
       this.throttle = clamp(this.throttle + i.wheel * 0.1, this.mode === 'supercruise' ? 0 : -0.5, 1)
       i.wheel = 0
+      this.lastThrottleInput = this.time
     }
     const boost = i.down('Tab') || i.down('Space')
     return { pitch, yaw, roll, strafe, vert, boost, manual: Math.abs(pitch) + Math.abs(yaw) + Math.abs(roll) > 0.05 }
@@ -955,6 +961,11 @@ export class Game {
 
   private flyNormal(dt: number, pitch: number, yaw: number, roll: number, strafe: number, vert: number, boost: boolean) {
     this.rotate(dt, pitch, yaw, roll, [0.85, 0.5, 1.7])
+    // Flight assist: with no throttle input the ship bleeds off speed and comes to rest.
+    if (this.fa && !this.autopilot && this.boostT <= 0 && this.time - this.lastThrottleInput > 0.8 && this.throttle !== 0) {
+      const step = 0.22 * dt
+      this.throttle = Math.abs(this.throttle) <= step ? 0 : this.throttle - Math.sign(this.throttle) * step
+    }
     if (boost && this.boostCharge >= 1 && this.boostT <= 0) {
       this.boostT = 3
       this.boostCharge = 0

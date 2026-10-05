@@ -16,7 +16,7 @@ const KEYS: [string, string][] = [
   ['T / Shift+T', 'Cycle nav targets'],
   ['L', 'Request docking / launch'],
   ['P', 'Autopilot to target (docks too)'],
-  ['Z', 'Flight assist on / off'],
+  ['Z', 'Flight assist on / off (on: ship coasts to a stop when you release the throttle)'],
   ['G', 'Landing gear'],
   ['M', 'Galaxy map'],
   ['N', 'System map'],
