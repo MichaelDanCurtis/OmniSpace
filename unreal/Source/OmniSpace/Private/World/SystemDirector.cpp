@@ -227,3 +227,8 @@ void ASystemDirector::ApplyDressing(const FStarSystemData& Dressed)
 			if (const FStationData* S = System.FindStation(E.Id)) St->Station = *S;
 	UE_LOG(LogOmniSpace, Log, TEXT("System %s dressed by the Forge (%s)"), *System.Name, *System.Profile.Faction);
 }
+
+void ASystemDirector::SetSkyWarp(float Warp, const FVector& Dir)
+{
+	if (Sky) Sky->SetWarp(Warp, Dir);
+}

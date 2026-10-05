@@ -16,6 +16,8 @@ class OMNISPACE_API ASkyActor : public AActor
 public:
 	ASkyActor();
 	void Setup(int32 Seed, const FLinearColor& NebulaTint);
+	/** Frame-shift streak: 0 = normal sky, 1 = full warp; Dir = jump direction (world). */
+	void SetWarp(float Warp, const FVector& Dir);
 
 protected:
 	UPROPERTY(VisibleAnywhere) TObjectPtr<UStaticMeshComponent> Dome;

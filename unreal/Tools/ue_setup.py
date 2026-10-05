@@ -212,6 +212,8 @@ return Color * (0.75 + 0.5 * g) * (1.0 - spots * 0.35);
 def build_sky(mat):
     seed = scalar_param(mat, "Seed", 0, -700, 150)
     tint = vec_param(mat, "Nebula", (0.25, 0.18, 0.45, 1), -700, 300)
+    warp = scalar_param(mat, "Warp", 0.0, -700, 450)          # 0 = normal sky, 1 = full warp streak
+    warpdir = vec_param(mat, "WarpDir", (1, 0, 0, 1), -700, 600)  # world direction of the jump
     localpos = MEL.create_material_expression(mat, unreal.MaterialExpressionTransformPosition, -700, -250)
     localpos.set_editor_property("transform_source_type", unreal.MaterialPositionTransformSource.TRANSFORMPOSSOURCE_WORLD)
     localpos.set_editor_property("transform_type", unreal.MaterialPositionTransformSource.TRANSFORMPOSSOURCE_LOCAL)
@@ -228,24 +230,55 @@ float lanes = fbm(gd * 7.0 + 3.0, 4) * 0.5 + 0.5;
 float mw = smoothstep(0.38, 0.0, band) * (0.3 + 0.7 * dust * dust);
 mw *= 1.0 - 0.75 * smoothstep(0.35, 0.75, lanes) * smoothstep(0.25, 0.0, band);
 float3 col = float3(0.78, 0.72, 0.62) * mw * 0.13;
-// faint nebulae
 // faint nebulae: sparse, wispy, mostly hidden in the galactic band
 float neb = pow(saturate(fbm(gd * 1.3 + 11.0, 5) * 0.5 + 0.5), 5.0) * (0.3 + 0.7 * smoothstep(0.6, 0.0, band));
 col += Nebula * neb * 0.12;
 col += float3(0.12, 0.25, 0.4) * pow(saturate(fbm(gd * 1.7 - 5.0, 4) * 0.5 + 0.5), 7.0) * 0.14;
-// stars: three magnitude layers (sparse bright, medium, dense faint); more in the band
 float dens = 1.0 + 1.0 * smoothstep(0.5, 0.0, band);
-float s = starLayer(d, 24.0, 0.05 * dens, Seed) * 2.2;
-s += starLayer(d, 70.0, 0.035 * dens, Seed + 9.0) * 1.0;
-s += starLayer(d, 180.0, 0.03 * dens, Seed + 31.0) * 0.35;
-float3 tintv = lerp(float3(0.75, 0.82, 1.0), float3(1.0, 0.85, 0.65), hash13(floor(d * 90.0 + Seed)));
-col += tintv * s;
+float w = saturate(Warp);
+col *= 1.0 - w; // dust and nebulae fall away as the frame shift takes hold
+float3 stars = 0;
+[branch] if (w < 0.001) {
+  float s = starLayer(d, 24.0, 0.05 * dens, Seed) * 2.2;
+  s += starLayer(d, 70.0, 0.035 * dens, Seed + 9.0) * 1.0;
+  s += starLayer(d, 180.0, 0.03 * dens, Seed + 31.0) * 0.35;
+  float3 tintv = lerp(float3(0.75, 0.82, 1.0), float3(1.0, 0.85, 0.65), hash13(floor(d * 90.0 + Seed)));
+  stars = tintv * s;
+} else {
+  // Warp: stars stream outward from the jump point. Each pixel integrates the star field along
+  // the great circle toward the jump direction, so every star smears into a radial streak; the
+  // near (bright) layer travels furthest - the parallax of a field you are rushing through.
+  float3 wd = normalize(WarpDir);
+  float ct = saturate(dot(d, wd));
+  float reach = w * w * (0.9 - 0.5 * ct);  // streaks are longest toward the periphery
+  const int TAPS = 9;
+  float sA = 0, sB = 0, sC = 0;
+  [loop] for (int i = 0; i < TAPS; i++) {
+    float t = i / (TAPS - 1.0);
+    float fade = 1.0 - t * 0.7;
+    float3 dA = normalize(lerp(d, wd, reach * 1.0 * t));
+    float3 dB = normalize(lerp(d, wd, reach * 0.55 * t));
+    float3 dC = normalize(lerp(d, wd, reach * 0.3 * t));
+    sA += starLayer(dA, 24.0, 0.05 * dens, Seed) * fade;
+    sB += starLayer(dB, 70.0, 0.035 * dens, Seed + 9.0) * fade;
+    sC += starLayer(dC, 180.0, 0.03 * dens, Seed + 31.0) * fade;
+  }
+  float s = (sA * 2.2 + sB * 1.0 + sC * 0.35) * (1.0 + 2.5 * w) / (TAPS * 0.55);
+  // colour slides from white through violet as the charge peaks
+  float3 shift = lerp(float3(1.0, 1.0, 1.0), float3(0.62, 0.38, 1.0), smoothstep(0.2, 0.9, w));
+  stars = shift * s;
+  // the centre of the field darkens into the throat
+  stars *= 1.0 - 0.6 * w * pow(ct, 8.0);
+}
+col += stars;
 return col;
 """
-    node = custom(mat, code, ["LocalPos", "Seed", "Nebula"], -300, 0)
+    node = custom(mat, code, ["LocalPos", "Seed", "Nebula", "Warp", "WarpDir"], -300, 0)
     MEL.connect_material_expressions(localpos, "", node, "LocalPos")
     MEL.connect_material_expressions(seed, "", node, "Seed")
     MEL.connect_material_expressions(tint, "", node, "Nebula")
+    MEL.connect_material_expressions(warp, "", node, "Warp")
+    MEL.connect_material_expressions(warpdir, "", node, "WarpDir")
     mat.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_UNLIT)
     mat.set_editor_property("two_sided", True)
     # "Is Sky": rendered at the far plane, so the dome never occludes anything however small it is.
@@ -253,29 +286,9 @@ return col;
     MEL.connect_material_property(node, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
 
 
-def sun_local_nodes(mat, x, y):
-    """SunL = normalize(SunPos - ObjectPos) in the primitive's local space; ViewL = camera vector in local space."""
-    sunpos = vec_param(mat, "SunPos", (1, 0, 0, 1), x, y)
-    op = MEL.create_material_expression(mat, unreal.MaterialExpressionObjectPositionWS, x, y + 150)
-    sub = MEL.create_material_expression(mat, unreal.MaterialExpressionSubtract, x + 200, y)
-    MEL.connect_material_expressions(sunpos, "", sub, "A")
-    MEL.connect_material_expressions(op, "", sub, "B")
-    norm = MEL.create_material_expression(mat, unreal.MaterialExpressionNormalize, x + 350, y)
-    MEL.connect_material_expressions(sub, "", norm, "")
-    tr = MEL.create_material_expression(mat, unreal.MaterialExpressionTransform, x + 500, y)
-    tr.set_editor_property("transform_source_type", unreal.MaterialVectorCoordTransformSource.TRANSFORMSOURCE_WORLD)
-    tr.set_editor_property("transform_type", unreal.MaterialVectorCoordTransform.TRANSFORM_LOCAL)
-    MEL.connect_material_expressions(norm, "", tr, "")
-    cam = MEL.create_material_expression(mat, unreal.MaterialExpressionCameraVectorWS, x, y + 300)
-    tr2 = MEL.create_material_expression(mat, unreal.MaterialExpressionTransform, x + 500, y + 300)
-    tr2.set_editor_property("transform_source_type", unreal.MaterialVectorCoordTransformSource.TRANSFORMSOURCE_WORLD)
-    tr2.set_editor_property("transform_type", unreal.MaterialVectorCoordTransform.TRANSFORM_LOCAL)
-    MEL.connect_material_expressions(cam, "", tr2, "")
-    return tr, tr2
-
-
 def build_tunnel(mat):
-    """Hyperspace tunnel seen from inside a long cylinder: streaks racing past, tinted by the destination star."""
+    """Hyperspace: inside a long cylinder, streaks race past the canopy; ahead, the far cap is a
+    dark horizon wrapped in a glowing accretion ring - the fall into the throat."""
     color = vec_param(mat, "Color", (0.6, 0.7, 1.0, 1), -700, 0)
     time = scalar_param(mat, "Time", 0, -700, 150)
     localpos = MEL.create_material_expression(mat, unreal.MaterialExpressionTransformPosition, -700, -250)
@@ -284,16 +297,32 @@ def build_tunnel(mat):
     wp = MEL.create_material_expression(mat, unreal.MaterialExpressionWorldPosition, -900, -250)
     MEL.connect_material_expressions(wp, "", localpos, "")
     code = NOISE_HLSL + """
-// cylinder mesh: radius 50, z in -50..50 (its axis is the ship's forward)
+// cylinder mesh: radius 50, z in -50..50 along the ship's forward axis; caps are flat discs
 float ang = atan2(LocalPos.y, LocalPos.x);
 float z = LocalPos.z / 50.0;
-float3 q = float3(ang * 3.0, z * 4.0 - Time * 2.5, 0.0);
-float streak = pow(saturate(fbm(q, 4) * 0.5 + 0.5), 7.0);
-float fine = pow(saturate(snoise(float3(ang * 24.0, z * 40.0 - Time * 9.0, 2.0)) * 0.5 + 0.5), 10.0);
-float pulse = 0.75 + 0.25 * sin(Time * 4.0 + z * 6.0);
-float3 col = Color * (streak * 5.0 + fine * 3.0) * pulse + Color * 0.04;
-// fade toward the far ends so the cylinder caps never show
-col *= smoothstep(1.0, 0.6, abs(z));
+float rr = length(LocalPos.xy) / 50.0;
+float3 col = 0;
+if (abs(z) > 0.985) {
+  // --- the horizon: a black disc ringed by a spiralling accretion glow
+  float spiral = sin(ang * 3.0 - Time * 2.5 + rr * 18.0) * 0.5 + 0.5;
+  float ring = pow(saturate(1.0 - abs(rr - 0.36) * 6.0), 2.5);
+  float halo = pow(saturate(1.0 - abs(rr - 0.5) * 2.2), 3.0) * 0.35;
+  float inner = smoothstep(0.30, 0.22, rr);          // the throat itself
+  float lens = pow(saturate(1.0 - rr * 1.6), 4.0) * 0.6;
+  col = Color * (ring * (1.5 + 1.5 * spiral) + halo) * 4.0 + float3(1,1,1) * lens * (1.0 - inner) * 0.5;
+  col *= 1.0 - inner;
+  col += float3(0.3, 0.15, 0.6) * (1.0 - inner) * pow(saturate(1.0 - rr), 2.0) * 0.4;
+} else {
+  float3 q = float3(ang * 3.0, z * 4.0 - Time * 2.5, 0.0);
+  float streak = pow(saturate(fbm(q, 4) * 0.5 + 0.5), 7.0);
+  float fine = pow(saturate(snoise(float3(ang * 24.0, z * 40.0 - Time * 9.0, 2.0)) * 0.5 + 0.5), 10.0);
+  float pulse = 0.75 + 0.25 * sin(Time * 4.0 + z * 6.0);
+  // wisps that twist around the axis: space folding past the hull
+  float twist = pow(saturate(snoise(float3(ang * 5.0 + z * 6.0 - Time * 1.5, z * 2.0, 7.0)) * 0.5 + 0.5), 5.0);
+  col = Color * (streak * 5.0 + fine * 3.0 + twist * 1.2) * pulse + Color * 0.04;
+  // brighter toward the horizon ahead, dark and quiet behind
+  col *= 0.35 + 0.65 * smoothstep(-1.0, 1.0, z);
+}
 return col;
 """
     node = custom(mat, code, ["LocalPos", "Color", "Time"], -300, 0)
@@ -303,6 +332,17 @@ return col;
     mat.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_UNLIT)
     mat.set_editor_property("two_sided", True)
     MEL.connect_material_property(node, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
+
+
+def build_flash(mat):
+    """Full-view white-out quad: unlit, translucent, opacity driven by the ship."""
+    color = vec_param(mat, "Color", (1, 1, 1, 1), -500, 0)
+    opacity = scalar_param(mat, "Opacity", 0.0, -500, 150)
+    mat.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_UNLIT)
+    mat.set_editor_property("blend_mode", unreal.BlendMode.BLEND_TRANSLUCENT)
+    mat.set_editor_property("two_sided", True)
+    MEL.connect_material_property(color, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
+    MEL.connect_material_property(opacity, "", unreal.MaterialProperty.MP_OPACITY)
 
 
 def build_rings(mat):
@@ -487,6 +527,7 @@ ensure_material("M_Rings", build_rings)
 ensure_material("M_Planet", build_planet)
 ensure_material("M_Sky", build_sky)
 ensure_material("M_Tunnel", build_tunnel)
+ensure_material("M_Flash", build_flash)
 ensure_map()
 ensure_audio()
 log("done")

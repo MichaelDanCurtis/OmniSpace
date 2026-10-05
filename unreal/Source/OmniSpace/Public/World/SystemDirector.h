@@ -55,6 +55,8 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "OmniSpace|System")
 	const FStarSystemData& GetSystem() const { return System; }
+	/** Frame-shift streak on the sky dome. */
+	void SetSkyWarp(float Warp, const FVector& Dir);
 	/** Debug: toggle visibility of the sky dome / star. */
 	void DebugToggle(int32 What);
 

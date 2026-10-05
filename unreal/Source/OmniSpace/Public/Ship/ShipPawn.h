@@ -155,6 +155,12 @@ protected:
 public:
 	UPROPERTY() TObjectPtr<class UStaticMeshComponent> Tunnel;
 	UPROPERTY() TObjectPtr<class UMaterialInstanceDynamic> TunnelMID;
+	UPROPERTY() TObjectPtr<class UStaticMeshComponent> Flash;
+	UPROPERTY() TObjectPtr<class UMaterialInstanceDynamic> FlashMID;
+	float WarpAmount = 0;      // sky streak 0..1
+	float FlashAmount = 0;     // white-out 0..1
+	double ArrivalT = -100;    // time of the last hyperspace exit (stars rush back in)
+	FQuat HyperBaseQ = FQuat::Identity;
 
 	struct FApControls { double Pitch = 0, Yaw = 0, Throttle = 0; bool bEngageSC = false, bDropSC = false; };
 	bool AutopilotControls(FApControls& Out);

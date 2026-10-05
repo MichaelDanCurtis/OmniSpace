@@ -71,6 +71,19 @@ void AShipPawn::BeginPlay()
 	Tunnel->SetVisibility(false);
 	Tunnel->RegisterComponent();
 	TunnelMID = OmniAssets::MakeMID(Tunnel, OmniAssets::MaterialOr(TEXT("/Game/Materials/M_Tunnel.M_Tunnel"), TEXT("/Engine/EngineMaterials/EmissiveMeshMaterial.EmissiveMeshMaterial")), this);
+	// white-out quad just in front of the camera (translucent, opacity driven per frame)
+	Flash = NewObject<UStaticMeshComponent>(this);
+	Flash->SetStaticMesh(OmniAssets::PlaneMesh());
+	Flash->SetupAttachment(Root);
+	Flash->SetRelativeLocation(FVector(30, 0, 0));
+	Flash->SetRelativeRotation(FRotator(-90, 0, 0)); // plane faces +Z by default; turn it to face the camera
+	Flash->SetRelativeScale3D(FVector(3, 3, 1));
+	Flash->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	Flash->SetCastShadow(false);
+	Flash->SetVisibility(false);
+	Flash->SetTranslucentSortPriority(100);
+	Flash->RegisterComponent();
+	FlashMID = OmniAssets::MakeMID(Flash, OmniAssets::MaterialOr(TEXT("/Game/Materials/M_Flash.M_Flash"), TEXT("/Engine/EngineMaterials/EmissiveMeshMaterial.EmissiveMeshMaterial")), this);
 	if (APlayerController* PC = Cast<APlayerController>(GetController()))
 	{
 		PC->bShowMouseCursor = false;
@@ -496,6 +509,8 @@ void AShipPawn::BeginHyperspace()
 	Velocity = FVector::ZeroVector;
 	AngVel = FVector::ZeroVector;
 	if (Tunnel) { Tunnel->SetHiddenInGame(false); Tunnel->SetVisibility(true); }
+	HyperBaseQ = Orientation;
+	FlashAmount = 1.f; // the crossover: everything goes white, then the tunnel fades in
 	if (TunnelMID) TunnelMID->SetVectorParameterValue(TEXT("Color"), JumpTarget.LinearColor());
 	Msg(FString::Printf(TEXT("Hyperspace jump - %s - %.2f ly"), *JumpTarget.Name, D));
 	GM->BeginJump(JumpTarget);
@@ -506,9 +521,12 @@ void AShipPawn::FlyHyperspace(float Dt)
 	AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode());
 	HyperT += Dt;
 	if (TunnelMID) TunnelMID->SetScalarParameterValue(TEXT("Time"), static_cast<float>(HyperT));
-	// gentle drift so the tunnel feels alive
-	Orientation = (Orientation * FQuat(FVector::ForwardVector, 0.03 * Dt)).GetNormalized();
+	// precession: the ship nods and rolls slowly inside a tunnel that stays fixed in the jump frame
+	const double T = HyperT;
+	const FQuat Wobble = FQuat(FVector::ForwardVector, 0.10 * FMath::Sin(T * 0.45)) * FQuat(FVector::RightVector, 0.035 * FMath::Sin(T * 0.7 + 1.3)) * FQuat(FVector::UpVector, 0.035 * FMath::Sin(T * 0.55 + 0.4));
+	Orientation = (HyperBaseQ * Wobble).GetNormalized();
 	SetActorRotation(Orientation);
+	if (Tunnel) Tunnel->SetWorldRotation(HyperBaseQ * FQuat(FVector::RightVector, PI / 2));
 	if (!GM) return;
 	const bool bRevealDone = HyperT > 0.8 + GM->JumpLog.Num() * 0.55;
 	if (GM->JumpFailed())
@@ -523,6 +541,8 @@ void AShipPawn::FlyHyperspace(float Dt)
 	{
 		if (Tunnel) Tunnel->SetVisibility(false);
 		JumpTargetId.Empty();
+		ArrivalT = Time;
+		FlashAmount = 1.f;
 		GM->CompleteJump(); // -> EnterSystem(..., true): places us near the star in supercruise
 		AdvanceRoute();
 	}
@@ -920,6 +940,27 @@ void AShipPawn::Tick(float Dt)
 	default: break;
 	}
 	if (Time - LastHit > 4) Shields = FMath::Min(1.0, Shields + Dt * 0.04);
+	// ---- frame-shift visuals: sky streak during the jump charge, white-out at the crossover,
+	// stars rushing back in after arrival
+	{
+		FVector JD = Orientation.GetForwardVector();
+		float TargetWarp = 0.f;
+		if (FsdKind == EFsdKind::Jump && JumpDirection(JD)) TargetWarp = static_cast<float>(FMath::Pow(FsdProgress, 1.6));
+		else if (Mode == EFlightMode::Hyperspace) TargetWarp = 1.f;
+		else if (Time - ArrivalT < 2.5) { JumpDirection(JD); TargetWarp = static_cast<float>(FMath::Max(0.0, 1.0 - (Time - ArrivalT) / 2.5)); JD = -Orientation.GetForwardVector(); }
+		WarpAmount += (TargetWarp - WarpAmount) * (1.f - FMath::Exp(-Dt * 6.f));
+		if (Director) Director->SetSkyWarp(WarpAmount, JD);
+		float TargetFlash = 0.f;
+		if (FsdKind == EFsdKind::Jump && FsdProgress > 0.9) TargetFlash = static_cast<float>((FsdProgress - 0.9) / 0.1);
+		FlashAmount = FMath::Max(TargetFlash, FlashAmount - Dt * (Mode == EFlightMode::Hyperspace ? 0.9f : 1.6f));
+		if (Flash && FlashMID)
+		{
+			Flash->SetVisibility(FlashAmount > 0.01f);
+			FlashMID->SetScalarParameterValue(TEXT("Opacity"), FMath::Clamp(FlashAmount, 0.f, 1.f));
+			const float V = FMath::Clamp(FlashAmount, 0.f, 1.f);
+			FlashMID->SetVectorParameterValue(TEXT("Color"), FLinearColor(1.f, 0.85f + 0.15f * V, 1.f) * (0.6f + 0.6f * V)); // violet-tinged white
+		}
+	}
 	if (Audio) Audio->Update(Dt);
 	if (Tunnel && Mode != EFlightMode::Hyperspace && Tunnel->IsVisible()) { Tunnel->SetVisibility(false); Tunnel->SetHiddenInGame(true); }
 	SetActorLocation(FVector::ZeroVector);
