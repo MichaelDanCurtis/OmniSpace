@@ -247,6 +247,7 @@ void AShipPawn::ToggleAutopilot()
 	}
 	bAutopilot = !bAutopilot;
 	ApStage = 0;
+	Stick = FVector2D::ZeroVector; // residual mouse motion must not count as a manual override
 	Msg(bAutopilot ? TEXT("Autopilot engaged") : TEXT("Autopilot disengaged"));
 }
 

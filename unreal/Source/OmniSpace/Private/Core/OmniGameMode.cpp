@@ -144,12 +144,15 @@ void AOmniGameMode::EnterSystem(const FStarSystemData& System, bool bArrivingFro
 	}
 	else
 	{
+		// hyperspace arrival: near the star, in supercruise, star off to one side, throttle closed
 		double StarR = System.Star.RadiusSolar * 695700000.0;
 		FVector Dir = FVector(0.6, 0.75, 0.25).GetSafeNormal();
 		FVector Pos = Dir * FMath::Max(StarR * 9.0, 4e8);
-		Ship->Place(Pos, FVector::ZeroVector);
+		FVector Side = FVector::CrossProduct(Dir, FVector::UpVector).GetSafeNormal();
+		Ship->Place(Pos, Pos + Side * 1e9 - Dir * 4e8);
 		Ship->Mode = EFlightMode::Supercruise;
 		Ship->SupercruiseSpeed = 30000;
+		Ship->Throttle = 0;
 	}
 	Ship->Msg(FString::Printf(TEXT("%s - %s - %s"), *System.Name, *System.Profile.Faction, *System.Profile.Economy));
 }
