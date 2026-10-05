@@ -90,6 +90,7 @@ void ASystemDirector::LoadSystem(const FStarSystemData& InSystem)
 			Resolved.Add(B->Id, Pos);
 			ACelestialBodyActor* A = World->SpawnActor<ACelestialBodyActor>(ACelestialBodyActor::StaticClass(), FTransform::Identity, P);
 			A->Setup(*B);
+			A->SetSunColor(System.Star.LinearColor().Desaturate(0.5f) * 1.05f);
 			FUniverseEntity E;
 			E.Actor = A;
 			E.Pos = Pos;
@@ -181,8 +182,10 @@ void ASystemDirector::PlaceAll()
 		SunLight->SetActorRotation((-ToStar).Rotation());
 	}
 	if (Star) Star->UpdateUniforms(Time);
+	// Use the star's *placed* position so planet->sun directions match the compressed scene.
+	const FVector SunWorld = Star ? Star->GetActorLocation() : -ShipPos * 100.0;
 	for (FUniverseEntity& E : Entities)
-		if (ACelestialBodyActor* B = Cast<ACelestialBodyActor>(E.Actor)) B->UpdateUniforms(-ShipPos * 100.0, Time);
+		if (ACelestialBodyActor* B = Cast<ACelestialBodyActor>(E.Actor)) B->UpdateUniforms(SunWorld, Time);
 }
 
 void ASystemDirector::Tick(float DeltaSeconds)

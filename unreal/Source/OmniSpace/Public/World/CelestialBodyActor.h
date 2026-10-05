@@ -20,6 +20,7 @@ public:
 	void SetRenderScale(double Scale);
 	/** SunWorldPos in cm (world space), Time in seconds. */
 	void UpdateUniforms(const FVector& SunWorldPos, double Time);
+	void SetSunColor(const FLinearColor& C);
 
 	UPROPERTY(BlueprintReadOnly, Category = "OmniSpace") FBodyData Body;
 

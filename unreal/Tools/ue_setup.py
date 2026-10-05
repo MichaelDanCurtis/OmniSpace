@@ -73,8 +73,12 @@ def build_planet(mat):
     seed = scalar_param(mat, "Seed", 0, -900, 350)
     atmo = vec_param(mat, "Atmo", (0.4, 0.7, 1, 1), -900, 450)
     has_atmo = scalar_param(mat, "HasAtmo", 0, -900, 600)
-    sunpos = vec_param(mat, "SunPos", (0, 0, 0, 1), -900, 750)
     clouds = scalar_param(mat, "Clouds", 0, -900, 900)
+    ring_in = scalar_param(mat, "RingIn", 1.5, -900, 1050)
+    ring_out = scalar_param(mat, "RingOut", 2.5, -900, 1150)
+    ring_seed = scalar_param(mat, "RingSeed", 0, -900, 1250)
+    ring_op = scalar_param(mat, "RingOpacity", 0, -900, 1350)   # 0 = no rings
+    sunl, _viewl = sun_local_nodes(mat, -1600, 1500)
     # object-space position normalised = sphere direction
     localpos = MEL.create_material_expression(mat, unreal.MaterialExpressionTransformPosition, -900, -450)
     localpos.set_editor_property("transform_source_type", unreal.MaterialPositionTransformSource.TRANSFORMPOSSOURCE_WORLD)
@@ -128,12 +132,24 @@ if (Clouds > 0.02) {
   col = lerp(col, float3(1, 1, 1), a * 0.92);
   spec = lerp(spec, 0.0, a);
 }
+// ring shadow: trace from this surface point toward the sun and see if it crosses the ring annulus
+if (RingOpacity > 0.001) {
+  float3 L = normalize(SunL);
+  if (abs(L.z) > 1e-4) {
+    float tt = -p.z / L.z;
+    if (tt > 0.0) {
+      float3 hit = p + tt * L;
+      float u = (length(hit.xy) - RingIn) / (RingOut - RingIn);
+      if (u > 0.0 && u < 1.0) col *= 1.0 - 0.85 * ringDensity(u, RingSeed) * RingOpacity;
+    }
+  }
+}
 Spec = spec;
 Emissive = emis;
 return col;
 """
     # The Custom node returns the base colour and writes Spec/Emissive via extra outputs
-    node = custom(mat, code, ["LocalPos", "C0", "C1", "C2", "Type", "Bands", "Seed", "Clouds"], -300, 0)
+    node = custom(mat, code, ["LocalPos", "C0", "C1", "C2", "Type", "Bands", "Seed", "Clouds", "RingIn", "RingOut", "RingSeed", "RingOpacity", "SunL"], -300, 0)
     outs = []
     for name, typ_ in (("Spec", unreal.CustomMaterialOutputType.CMOT_FLOAT1), ("Emissive", unreal.CustomMaterialOutputType.CMOT_FLOAT3)):
         o = unreal.CustomOutput()
@@ -142,7 +158,7 @@ return col;
         outs.append(o)
     node.set_editor_property("additional_outputs", outs)
     MEL.connect_material_expressions(localpos, "", node, "LocalPos")
-    for n, nm in ((c0, "C0"), (c1, "C1"), (c2, "C2"), (typ, "Type"), (bands, "Bands"), (seed, "Seed"), (clouds, "Clouds")):
+    for n, nm in ((c0, "C0"), (c1, "C1"), (c2, "C2"), (typ, "Type"), (bands, "Bands"), (seed, "Seed"), (clouds, "Clouds"), (ring_in, "RingIn"), (ring_out, "RingOut"), (ring_seed, "RingSeed"), (ring_op, "RingOpacity"), (sunl, "SunL")):
         MEL.connect_material_expressions(n, "", node, nm)
     MEL.connect_material_property(node, "", unreal.MaterialProperty.MP_BASE_COLOR)
     MEL.connect_material_property(node, "Emissive", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
@@ -236,52 +252,143 @@ return col;
     MEL.connect_material_property(node, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
 
 
+def sun_local_nodes(mat, x, y):
+    """SunL = normalize(SunPos - ObjectPos) in the primitive's local space; ViewL = camera vector in local space."""
+    sunpos = vec_param(mat, "SunPos", (1, 0, 0, 1), x, y)
+    op = MEL.create_material_expression(mat, unreal.MaterialExpressionObjectPositionWS, x, y + 150)
+    sub = MEL.create_material_expression(mat, unreal.MaterialExpressionSubtract, x + 200, y)
+    MEL.connect_material_expressions(sunpos, "", sub, "A")
+    MEL.connect_material_expressions(op, "", sub, "B")
+    norm = MEL.create_material_expression(mat, unreal.MaterialExpressionNormalize, x + 350, y)
+    MEL.connect_material_expressions(sub, "", norm, "")
+    tr = MEL.create_material_expression(mat, unreal.MaterialExpressionTransform, x + 500, y)
+    tr.set_editor_property("transform_source_type", unreal.MaterialVectorCoordTransformSource.TRANSFORMSOURCE_WORLD)
+    tr.set_editor_property("transform_type", unreal.MaterialVectorCoordTransform.TRANSFORM_LOCAL)
+    MEL.connect_material_expressions(norm, "", tr, "")
+    cam = MEL.create_material_expression(mat, unreal.MaterialExpressionCameraVectorWS, x, y + 300)
+    tr2 = MEL.create_material_expression(mat, unreal.MaterialExpressionTransform, x + 500, y + 300)
+    tr2.set_editor_property("transform_source_type", unreal.MaterialVectorCoordTransformSource.TRANSFORMSOURCE_WORLD)
+    tr2.set_editor_property("transform_type", unreal.MaterialVectorCoordTransform.TRANSFORM_LOCAL)
+    MEL.connect_material_expressions(cam, "", tr2, "")
+    return tr, tr2
+
+
 def build_rings(mat):
     color = vec_param(mat, "Color", (0.8, 0.78, 0.74, 1), -700, 0)
     opacity = scalar_param(mat, "Opacity", 0.7, -700, 150)
     inner = scalar_param(mat, "Inner", 0.5, -700, 250)
     seed = scalar_param(mat, "Seed", 0, -700, 350)
-    uv = MEL.create_material_expression(mat, unreal.MaterialExpressionTextureCoordinate, -700, -200)
+    planet = scalar_param(mat, "Planet", 0.4, -700, 450)   # planet radius / ring outer radius
+    suncol = vec_param(mat, "SunColor", (1, 0.97, 0.9, 1), -700, 550)
+    localpos = MEL.create_material_expression(mat, unreal.MaterialExpressionTransformPosition, -700, -200)
+    localpos.set_editor_property("transform_source_type", unreal.MaterialPositionTransformSource.TRANSFORMPOSSOURCE_WORLD)
+    localpos.set_editor_property("transform_type", unreal.MaterialPositionTransformSource.TRANSFORMPOSSOURCE_LOCAL)
+    wp = MEL.create_material_expression(mat, unreal.MaterialExpressionWorldPosition, -900, -200)
+    MEL.connect_material_expressions(wp, "", localpos, "")
+    sunl, viewl = sun_local_nodes(mat, -1500, 700)
     code = NOISE_HLSL + """
-float2 c = UV - 0.5;
-float r = length(c) * 2.0; // 0..1 at the plane edge
+float3 P = LocalPos / 50.0;               // plane mesh is 100 cm: P in units of the outer radius
+float r = length(P.xy);
 float t = (r - Inner) / (1.0 - Inner);
 if (t < 0.0 || t > 1.0) { Alpha = 0; return 0; }
-float d = 0.55 + 0.25 * sin(t * 71.0 + Seed) + 0.2 * sin(t * 23.0 + Seed * 2.0);
-d += snoise(float3(t * 160.0, Seed, 0.0)) * 0.25 + snoise(float3(t * 700.0, Seed * 2.0, 1.0)) * 0.12;
-d *= smoothstep(0.0, 0.05, t) * smoothstep(1.0, 0.9, t);
-d *= 1.0 - 0.9 * smoothstep(0.022, 0.0, abs(t - 0.63));
-d *= 1.0 - 0.5 * smoothstep(0.012, 0.0, abs(t - 0.31));
-d = saturate(d);
+float d = ringDensity(t, Seed);
+float3 L = normalize(SunL);
+float3 V = normalize(ViewL);
+// planet shadow: ray from the ring point toward the sun hits the planet sphere at the origin
+float sh = 1.0;
+float t0 = -dot(P, L);
+if (t0 > 0.0) { float d2 = dot(P, P) - t0 * t0; sh = smoothstep(Planet * Planet * 0.9, Planet * Planet * 1.03, d2); }
+float lit = 0.12 + 0.88 * abs(L.z);
+float grain = 0.75 + 0.35 * snoise(float3(t * 40.0, 3.0, Seed));
+// thin, icy rings glow when you look at the sun through them
+float back = pow(saturate(dot(-V, L)), 5.0) * 1.8 * (1.0 - d * 0.6);
+float3 col = Color * SunColor * grain * (lit * sh + 0.025) + Color * SunColor * back * sh;
 Alpha = d * Opacity;
-return Color * (0.75 + 0.35 * snoise(float3(t * 40.0, 3.0, Seed)));
+return col;
 """
-    node = custom(mat, code, ["UV", "Color", "Opacity", "Inner", "Seed"], -300, 0)
+    node = custom(mat, code, ["LocalPos", "Color", "Opacity", "Inner", "Seed", "Planet", "SunColor", "SunL", "ViewL"], -300, 0)
     o = unreal.CustomOutput()
     o.set_editor_property("output_name", "Alpha")
     o.set_editor_property("output_type", unreal.CustomMaterialOutputType.CMOT_FLOAT1)
     node.set_editor_property("additional_outputs", [o])
-    MEL.connect_material_expressions(uv, "", node, "UV")
-    for n, nm in ((color, "Color"), (opacity, "Opacity"), (inner, "Inner"), (seed, "Seed")):
+    MEL.connect_material_expressions(localpos, "", node, "LocalPos")
+    for n, nm in ((color, "Color"), (opacity, "Opacity"), (inner, "Inner"), (seed, "Seed"), (planet, "Planet"), (suncol, "SunColor"), (sunl, "SunL"), (viewl, "ViewL")):
         MEL.connect_material_expressions(n, "", node, nm)
     mat.set_editor_property("blend_mode", unreal.BlendMode.BLEND_TRANSLUCENT)
     mat.set_editor_property("two_sided", True)
-    MEL.connect_material_property(node, "", unreal.MaterialProperty.MP_BASE_COLOR)
+    mat.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_UNLIT)
+    MEL.connect_material_property(node, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
     MEL.connect_material_property(node, "Alpha", unreal.MaterialProperty.MP_OPACITY)
-    rough = MEL.create_material_expression(mat, unreal.MaterialExpressionConstant, -300, 300)
-    rough.set_editor_property("r", 0.9)
-    MEL.connect_material_property(rough, "", unreal.MaterialProperty.MP_ROUGHNESS)
 
 
 def build_hull(mat):
-    color = vec_param(mat, "Color", (0.35, 0.38, 0.42, 1), -500, 0)
-    MEL.connect_material_property(color, "", unreal.MaterialProperty.MP_BASE_COLOR)
-    metal = MEL.create_material_expression(mat, unreal.MaterialExpressionConstant, -500, 200)
-    metal.set_editor_property("r", 0.6)
+    """Panelled hull: triplanar panel grid in the part's own frame (world pos relative to the
+    part, un-spun by the Spin parameter the station actor updates), with seams, per-panel tint,
+    scattered lit windows and roughness variation."""
+    color = vec_param(mat, "Color", (0.35, 0.38, 0.42, 1), -900, 0)
+    windows = scalar_param(mat, "Windows", 0.0, -900, 150)       # 0..1 density of lit windows
+    winc = vec_param(mat, "WindowColor", (1.0, 0.85, 0.6, 1), -900, 300)
+    spin = scalar_param(mat, "Spin", 0.0, -900, 450)              # radians, station rotation about Z
+    panel = scalar_param(mat, "PanelM", 6.0, -900, 600)           # panel size in metres
+    seed = scalar_param(mat, "Seed", 0.0, -900, 750)
+    wp = MEL.create_material_expression(mat, unreal.MaterialExpressionWorldPosition, -900, -300)
+    op = MEL.create_material_expression(mat, unreal.MaterialExpressionObjectPositionWS, -900, -150)
+    nrm = MEL.create_material_expression(mat, unreal.MaterialExpressionVertexNormalWS, -900, -450)
+    code = NOISE_HLSL + """
+float3 rel = WorldPos - ObjectPos;                 // cm, relative to this part
+float cs = cos(-Spin), sn = sin(-Spin);
+float3 p = float3(rel.x * cs - rel.y * sn, rel.x * sn + rel.y * cs, rel.z) / 100.0 + Seed; // metres, un-spun
+float3 n = abs(normalize(Normal));
+float3 w = pow(n, 6.0); w /= (w.x + w.y + w.z);
+float3 col = 0; float seam = 0; float win = 0; float rough = 0; float tintv = 0;
+float2 uvs[3] = { p.yz, p.xz, p.xy };
+[unroll] for (int i = 0; i < 3; i++) {
+  float2 uv = uvs[i] / PanelM;
+  float2 cell = floor(uv);
+  float2 f = frac(uv);
+  float h = hash13(float3(cell, i * 7.0 + Seed));
+  // sub-panel split for variety
+  float split = step(0.5, hash13(float3(cell, 3.0 + i)));
+  float2 f2 = split > 0.5 ? frac(uv * float2(2.0, 1.0)) : f;
+  float2 e = min(f2, 1.0 - f2);
+  float s = 1.0 - smoothstep(0.0, 0.035, min(e.x, e.y));
+  // rivet/line detail along one edge
+  float stripe = smoothstep(0.012, 0.0, abs(f.y - 0.08)) * step(0.6, h);
+  float t = 0.82 + 0.36 * h;
+  // windows: a rectangle in some cells
+  float wsel = step(1.0 - Windows * 0.35, hash13(float3(cell, 11.0 + i)));
+  float2 wc = abs(f - float2(0.5, 0.35));
+  float wr = step(wc.x, 0.22) * step(wc.y, 0.06) * wsel;
+  seam += w[i] * max(s, stripe * 0.6);
+  tintv += w[i] * t;
+  win += w[i] * wr;
+  rough += w[i] * (0.4 + 0.35 * hash13(float3(cell, 5.0 + i)) + 0.25 * s);
+}
+float grime = fbm(p * 0.35, 3) * 0.5 + 0.5;
+col = Color * tintv * (1.0 - seam * 0.55) * (0.8 + 0.3 * grime);
+Roughness = saturate(rough + grime * 0.15);
+Emissive = WindowColor * win * 4.0 * (0.6 + 0.4 * hash13(floor(p * 0.5)));
+return col;
+"""
+    node = custom(mat, code, ["WorldPos", "ObjectPos", "Normal", "Color", "Windows", "WindowColor", "Spin", "PanelM", "Seed"], -300, 0)
+    outs = []
+    for name, typ_ in (("Roughness", unreal.CustomMaterialOutputType.CMOT_FLOAT1), ("Emissive", unreal.CustomMaterialOutputType.CMOT_FLOAT3)):
+        o = unreal.CustomOutput()
+        o.set_editor_property("output_name", name)
+        o.set_editor_property("output_type", typ_)
+        outs.append(o)
+    node.set_editor_property("additional_outputs", outs)
+    MEL.connect_material_expressions(wp, "", node, "WorldPos")
+    MEL.connect_material_expressions(op, "", node, "ObjectPos")
+    MEL.connect_material_expressions(nrm, "", node, "Normal")
+    for n, nm in ((color, "Color"), (windows, "Windows"), (winc, "WindowColor"), (spin, "Spin"), (panel, "PanelM"), (seed, "Seed")):
+        MEL.connect_material_expressions(n, "", node, nm)
+    MEL.connect_material_property(node, "", unreal.MaterialProperty.MP_BASE_COLOR)
+    MEL.connect_material_property(node, "Roughness", unreal.MaterialProperty.MP_ROUGHNESS)
+    MEL.connect_material_property(node, "Emissive", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
+    metal = MEL.create_material_expression(mat, unreal.MaterialExpressionConstant, -300, 400)
+    metal.set_editor_property("r", 0.55)
     MEL.connect_material_property(metal, "", unreal.MaterialProperty.MP_METALLIC)
-    rough = MEL.create_material_expression(mat, unreal.MaterialExpressionConstant, -500, 300)
-    rough.set_editor_property("r", 0.45)
-    MEL.connect_material_property(rough, "", unreal.MaterialProperty.MP_ROUGHNESS)
 
 
 def build_emissive(mat):

@@ -71,3 +71,13 @@ float starLayer(float3 dir, float cells, float density, float seed){
   }
   return best;
 }
+// Ring density profile, t = 0 at the inner edge .. 1 at the outer edge. Shared by the ring
+// material and the planet material (ring shadow on the planet).
+float ringDensity(float t, float Seed){
+  float d = 0.55 + 0.25 * sin(t * 71.0 + Seed) + 0.2 * sin(t * 23.0 + Seed * 2.0);
+  d += snoise(float3(t * 160.0, Seed, 0.0)) * 0.25 + snoise(float3(t * 700.0, Seed * 2.0, 1.0)) * 0.12;
+  d *= smoothstep(0.0, 0.05, t) * smoothstep(1.0, 0.9, t);
+  d *= 1.0 - 0.9 * smoothstep(0.022, 0.0, abs(t - 0.63));
+  d *= 1.0 - 0.5 * smoothstep(0.012, 0.0, abs(t - 0.31));
+  return saturate(d);
+}

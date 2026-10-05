@@ -42,7 +42,17 @@ protected:
 	UPROPERTY(VisibleAnywhere) TObjectPtr<USceneComponent> Spinner;
 	double Angle = 0;
 
-	UStaticMeshComponent* AddPart(UStaticMesh* Mesh, const FVector& PosM, const FRotator& Rot, const FVector& SizeM, UMaterialInterface* Mat, const FLinearColor& Color, bool bCollide = true);
+	/** Hull MIDs get the station spin angle each tick so their panel pattern turns with the hull. */
+	UPROPERTY() TArray<TObjectPtr<class UMaterialInstanceDynamic>> HullMids;
+	uint32 Seed = 1;
+	double Rand();                          // deterministic 0..1 (mulberry32 on Seed)
+	double RandRange(double A, double B) { return A + (B - A) * Rand(); }
+
+	UStaticMeshComponent* AddPart(UStaticMesh* Mesh, const FVector& PosM, const FRotator& Rot, const FVector& SizeM, UMaterialInterface* Mat, const FLinearColor& Color, bool bCollide = true, float Windows = 0.f, float PanelM = 6.f);
+	/** A cylinder spanning two points (m) with the given diameter (m). */
+	UStaticMeshComponent* AddStrut(const FVector& AM, const FVector& BM, double DiamM, UMaterialInterface* Mat, const FLinearColor& Color);
+	/** Scatter industrial clutter (boxes, tanks, masts) on a horizontal annulus. */
+	void Greeble(int32 Count, double RMin, double RMax, double Z, double Up, double SMin, double SMax, UMaterialInterface* Hull, const FLinearColor& A, const FLinearColor& B);
 	void BuildSpire();
 	void BuildRing();
 	void BuildOutpost();

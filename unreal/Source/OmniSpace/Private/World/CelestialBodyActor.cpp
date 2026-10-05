@@ -57,6 +57,14 @@ void ACelestialBodyActor::Setup(const FBodyData& InBody)
 		SurfaceMID->SetScalarParameterValue(TEXT("Seed"), static_cast<float>((GetTypeHash(Body.Id) % 1000) / 37.0));
 		SurfaceMID->SetVectorParameterValue(TEXT("Atmo"), Body.Atmosphere.IsEmpty() ? FLinearColor::Black : OmniJson::HexToLinear(Body.Atmosphere));
 		SurfaceMID->SetScalarParameterValue(TEXT("HasAtmo"), Body.Atmosphere.IsEmpty() ? 0.f : 1.f);
+		if (Body.bHasRings && Body.RadiusM > 0)
+		{
+			SurfaceMID->SetScalarParameterValue(TEXT("RingIn"), static_cast<float>(Body.Rings.InnerM / Body.RadiusM));
+			SurfaceMID->SetScalarParameterValue(TEXT("RingOut"), static_cast<float>(Body.Rings.OuterM / Body.RadiusM));
+			SurfaceMID->SetScalarParameterValue(TEXT("RingSeed"), static_cast<float>((GetTypeHash(Body.Id) % 97) / 7.0));
+			SurfaceMID->SetScalarParameterValue(TEXT("RingOpacity"), Body.Rings.Opacity);
+		}
+		else SurfaceMID->SetScalarParameterValue(TEXT("RingOpacity"), 0.f);
 	}
 	if (Body.bHasRings)
 	{
@@ -70,6 +78,7 @@ void ACelestialBodyActor::Setup(const FBodyData& InBody)
 			RingMID->SetScalarParameterValue(TEXT("Opacity"), Body.Rings.Opacity);
 			RingMID->SetScalarParameterValue(TEXT("Inner"), Body.Rings.InnerM / Body.Rings.OuterM);
 			RingMID->SetScalarParameterValue(TEXT("Seed"), static_cast<float>((GetTypeHash(Body.Id) % 97) / 7.0));
+			RingMID->SetScalarParameterValue(TEXT("Planet"), static_cast<float>(Body.RadiusM / Body.Rings.OuterM));
 		}
 	}
 }
@@ -80,6 +89,11 @@ void ACelestialBodyActor::SetRenderScale(double Scale)
 	RenderScale = Scale;
 	Surface->SetRelativeScale3D(FVector(Body.RadiusM * 2.0 * Scale));
 	if (Body.bHasRings) Rings->SetRelativeScale3D(FVector(Body.Rings.OuterM * 2.0 * Scale, Body.Rings.OuterM * 2.0 * Scale, 1.0));
+}
+
+void ACelestialBodyActor::SetSunColor(const FLinearColor& C)
+{
+	if (RingMID) RingMID->SetVectorParameterValue(TEXT("SunColor"), C);
 }
 
 void ACelestialBodyActor::UpdateUniforms(const FVector& SunWorldPos, double Time)
