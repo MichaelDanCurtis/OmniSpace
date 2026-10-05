@@ -100,6 +100,7 @@ void AShipPawn::SetupPlayerInputComponent(UInputComponent* IC)
 	IC->BindKey(EKeys::L, IE_Pressed, this, &AShipPawn::OnDock);
 	IC->BindKey(EKeys::T, IE_Pressed, this, &AShipPawn::OnCycleTarget);
 	IC->BindKey(EKeys::LeftMouseButton, IE_Pressed, this, &AShipPawn::OnMouseLock);
+	IC->BindKey(EKeys::P, IE_Pressed, this, &AShipPawn::OnToggleAutopilot);
 }
 
 void AShipPawn::OnMouseX(float V)
@@ -214,6 +215,101 @@ void AShipPawn::ToggleSupercruise()
 	FsdTime = 0;
 	FsdDuration = 3;
 	Msg(TEXT("Frame shift drive charging"));
+}
+
+void AShipPawn::ToggleAutopilot()
+{
+	if (!bAutopilot && TargetId.IsEmpty())
+	{
+		Msg(TEXT("Autopilot needs a target (press T)"));
+		return;
+	}
+	bAutopilot = !bAutopilot;
+	ApStage = 0;
+	Msg(bAutopilot ? TEXT("Autopilot engaged") : TEXT("Autopilot disengaged"));
+}
+
+bool AShipPawn::AutopilotControls(FApControls& Out)
+{
+	if (!Director || TargetId.IsEmpty()) return false;
+	FVector TP; double TR;
+	if (!Director->GetEntityPos(TargetId, TP, TR)) return false;
+	const FVector Ship = Director->GetShipUniversePos();
+	const double Dist = FVector::Dist(TP, Ship);
+	AStationActor* St = FindStation(TargetId);
+	const bool bStar = TargetId == TEXT("star");
+	const bool bBody = !St && !bStar;
+	FVector AimDir = (TP - Ship).GetSafeNormal(); // world axes (universe directions == world directions)
+	double ThrottleOut = 0.75;
+	bool bEngageSC = false, bDropSC = false;
+	if (Mode == EFlightMode::Supercruise)
+	{
+		if (bBody && Dist - TR < TR * 2.5) bDropSC = true;
+		if (bStar && Dist < TR * 6) bDropSC = true;
+		if (bBody)
+		{
+			// aim at the limb so we glide past rather than into it
+			FVector ToT = TP - Ship;
+			FVector Side = FVector::CrossProduct(ToT, FVector::UpVector).GetSafeNormal();
+			AimDir = (ToT + Side * TR * 1.6).GetSafeNormal();
+		}
+	}
+	else
+	{
+		if (St)
+		{
+			if (Dist < DOCK_RANGE && DockingStationId.IsEmpty()) RequestDocking();
+			if (DockingStationId == TargetId)
+			{
+				FVector BayPos, BayN; // world cm, ship at origin
+				St->GetBayWorld(DockingBay, BayPos, BayN);
+				const FVector P1 = BayPos + BayN * 180000.0;
+				const FVector P2 = BayPos + BayN * 30000.0;
+				const FVector P3 = BayPos + BayN * 5500.0;
+				if (ApStage == 0 && P1.Size() < 35000.0) ApStage = 1;
+				if (ApStage == 1 && P2.Size() < 12000.0) ApStage = 2;
+				FVector Aim = ApStage == 0 ? P1 : ApStage == 1 ? P2 : P3;
+				if (ApStage == 0)
+				{
+					// steer around the station if the straight line to the approach point crosses the hull
+					FHitResult Hit;
+					FCollisionQueryParams Params(SCENE_QUERY_STAT(ApTrace), false, this);
+					if (GetWorld()->SweepSingleByChannel(Hit, FVector::ZeroVector, P1, FQuat::Identity, ECC_WorldDynamic, FCollisionShape::MakeSphere(ShipRadiusM * 100.0 * 4.0), Params) && Hit.GetActor() == St)
+					{
+						const FVector StW = St->GetActorLocation();
+						FVector Rel = -StW; // ship relative to station
+						FVector Perp = Rel - BayN * FVector::DotProduct(Rel, BayN);
+						if (Perp.SizeSquared() < 1.0) Perp = FVector::CrossProduct(BayN, FMath::Abs(BayN.Z) < 0.9 ? FVector::UpVector : FVector::ForwardVector);
+						Aim = StW + Perp.GetSafeNormal() * (St->BoundRadiusM + 600.0) * 100.0;
+					}
+				}
+				const double D = Aim.Size() / 100.0; // m
+				ThrottleOut = Clamp(D / 1200.0, 0.12, ApStage == 0 ? 1.0 : 0.4);
+				AimDir = Aim.GetSafeNormal();
+			}
+			else ThrottleOut = Clamp(Dist / 20000.0, 0.2, 1.0);
+			if (Dist > 40000.0 && !IsMassLocked()) bEngageSC = true;
+		}
+		else
+		{
+			if (Dist > 30000.0) bEngageSC = true;
+			ThrottleOut = Clamp(Dist / 8000.0, 0.0, 1.0);
+			if (bStar && Dist < TR * 8) { bEngageSC = false; ThrottleOut = 0; }
+			if (bBody && Dist - TR < TR * 3) { bEngageSC = false; ThrottleOut = 0; }
+		}
+	}
+	const FVector Local = Orientation.UnrotateVector(AimDir); // X fwd, Y right, Z up
+	const double YawErr = FMath::Atan2(Local.Y, Local.X);
+	const double PitchErr = FMath::Atan2(Local.Z, FMath::Sqrt(Local.X * Local.X + Local.Y * Local.Y));
+	const double Misalign = FMath::Sqrt(YawErr * YawErr + PitchErr * PitchErr);
+	if (Misalign > 0.5 && Mode == EFlightMode::Normal) ThrottleOut = FMath::Min(ThrottleOut, 0.55);
+	if (Misalign > 0.3) bEngageSC = false;
+	Out.Pitch = Clamp(PitchErr * 3.0, -1, 1);
+	Out.Yaw = Clamp(YawErr * 3.0, -1, 1);
+	Out.Throttle = ThrottleOut;
+	Out.bEngageSC = bEngageSC;
+	Out.bDropSC = bDropSC;
+	return true;
 }
 
 void AShipPawn::RequestDocking()
@@ -526,6 +622,30 @@ void AShipPawn::Tick(float Dt)
 		Throttle = Clamp(Throttle + InThrottle * Dt * 0.75, Mode == EFlightMode::Supercruise ? 0 : -0.5, 1);
 		LastThrottleInput = Time;
 	}
+	// autopilot: manual override disengages; otherwise it drives pitch/yaw/throttle
+	if (bAutopilot && Mode != EFlightMode::Docking && FMath::Abs(Stick.X) + FMath::Abs(Stick.Y) + FMath::Abs(InRoll) + FMath::Abs(InPitch) + FMath::Abs(InYaw) > 0.4)
+	{
+		bAutopilot = false;
+		Msg(TEXT("Autopilot disengaged - manual override"));
+	}
+	if (bAutopilot && (Mode == EFlightMode::Normal || Mode == EFlightMode::Supercruise))
+	{
+		FApControls Ap;
+		if (AutopilotControls(Ap))
+		{
+			Stick = FVector2D::ZeroVector;
+			InPitch = Ap.Pitch;
+			InYaw = Ap.Yaw;
+			InRoll = InStrafe = InVert = 0;
+			bBoostHeld = false;
+			Throttle = Ap.Throttle;
+			LastThrottleInput = Time; // keep flight assist from bleeding the autopilot's throttle
+			if (Ap.bEngageSC && FsdKind == EFsdKind::None && Mode == EFlightMode::Normal && !IsMassLocked()) ToggleSupercruise();
+			if (Ap.bDropSC && Mode == EFlightMode::Supercruise) DropFromSupercruise(true);
+		}
+		else bAutopilot = false;
+	}
+	if (bAutopilot && (Mode == EFlightMode::Docked || Mode == EFlightMode::Docking)) bAutopilot = false;
 	// FSD charge
 	if (FsdKind != EFsdKind::None)
 	{

@@ -55,6 +55,7 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Ship") FString DockingStationId;
 	UPROPERTY(BlueprintReadOnly, Category = "Ship") int32 DockingBay = 0;
 	UPROPERTY(BlueprintReadOnly, Category = "Ship") TArray<FString> Messages;
+	UPROPERTY(BlueprintReadOnly, Category = "Ship") bool bAutopilot = false;
 
 	UFUNCTION(BlueprintCallable, Category = "Ship") void Msg(const FString& Text);
 	UFUNCTION(BlueprintCallable, Category = "Ship") void SetTarget(const FString& Id);
@@ -62,6 +63,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Ship") void ToggleSupercruise();
 	UFUNCTION(BlueprintCallable, Category = "Ship") void RequestDocking();
 	UFUNCTION(BlueprintCallable, Category = "Ship") void Launch();
+	UFUNCTION(BlueprintCallable, Category = "Ship") void ToggleAutopilot();
 	UFUNCTION(BlueprintCallable, Category = "Ship") bool IsMassLocked() const;
 	UFUNCTION(BlueprintPure, Category = "Ship") double CurrentSpeed() const;
 	UFUNCTION(BlueprintPure, Category = "Ship") ASystemDirector* GetDirector() const;
@@ -87,6 +89,7 @@ protected:
 	FVector DockFrom;
 	FQuat DockFromQ;
 	double LastHit = -100, LastImpact = -100;
+	int32 ApStage = 0;
 	double Time = 0;
 	FQuat Orientation = FQuat::Identity;
 	FVector AngVel = FVector::ZeroVector;
@@ -116,6 +119,10 @@ protected:
 	void OnDock() { if (Mode == EFlightMode::Docked) Launch(); else RequestDocking(); }
 	void OnCycleTarget() { CycleTarget(); }
 	void OnMouseLock();
+	void OnToggleAutopilot() { ToggleAutopilot(); }
+
+	struct FApControls { double Pitch = 0, Yaw = 0, Throttle = 0; bool bEngageSC = false, bDropSC = false; };
+	bool AutopilotControls(FApControls& Out);
 
 	void Rotate(float Dt, double Pitch, double Yaw, double Roll, const FVector& Rates);
 	void FlyNormal(float Dt);

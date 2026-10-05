@@ -56,6 +56,7 @@ void AOmniHUD::DrawHUD()
 	Line(FString::Printf(TEXT("HULL %3.0f%%  SHLD %3.0f%%  FUEL %4.1f t  HEAT %3.0f%%"), Ship->Hull * 100, Ship->Shields * 100, Ship->Fuel, Ship->Heat * 100), Cyan);
 	if (Ship->FsdKind != EFsdKind::None) Line(FString::Printf(TEXT("FSD CHARGING %3.0f%%"), Ship->FsdProgress * 100), Amber);
 	if (Ship->IsMassLocked() && Ship->Mode == EFlightMode::Normal) Line(TEXT("MASS LOCKED"), Amber);
+	if (Ship->bAutopilot) Line(TEXT("AUTOPILOT"), FLinearColor::Green);
 	if (!Ship->DockingStationId.IsEmpty() && Ship->Mode == EFlightMode::Normal) Line(FString::Printf(TEXT("DOCKING: %s BAY %d"), *Ship->DockingStationId, Ship->DockingBay + 1), FLinearColor::Green);
 
 	// target
@@ -76,5 +77,5 @@ void AOmniHUD::DrawHUD()
 	// messages
 	Y = H - 30 - 20 * FMath::Min(6, Ship->Messages.Num());
 	for (int i = FMath::Max(0, Ship->Messages.Num() - 6); i < Ship->Messages.Num(); i++) Line(Ship->Messages[i], FLinearColor(0.85f, 0.92f, 1.f));
-	DrawText(TEXT("W/S throttle  mouse/arrows steer  A/D roll  Q/E R/F thrusters  Tab boost  J supercruise  T target  L dock/launch  Z FA  X stop  C 75%"), FLinearColor(0.5f, 0.6f, 0.7f), 30, H - 12, Font, 0.9f);
+	DrawText(TEXT("W/S throttle  mouse/arrows steer  A/D roll  Q/E R/F thrusters  Tab boost  J supercruise  T target  P autopilot  L dock/launch  Z FA  X stop  C 75%"), FLinearColor(0.5f, 0.6f, 0.7f), 30, H - 12, Font, 0.9f);
 }
