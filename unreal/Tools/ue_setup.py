@@ -235,9 +235,9 @@ col += Nebula * neb * 0.12;
 col += float3(0.12, 0.25, 0.4) * pow(saturate(fbm(gd * 1.7 - 5.0, 4) * 0.5 + 0.5), 7.0) * 0.14;
 // stars: three magnitude layers (sparse bright, medium, dense faint); more in the band
 float dens = 1.0 + 1.0 * smoothstep(0.5, 0.0, band);
-float s = starLayer(d, 24.0, 0.05 * dens, Seed) * 3.0;
-s += starLayer(d, 70.0, 0.045 * dens, Seed + 9.0) * 1.4;
-s += starLayer(d, 180.0, 0.05 * dens, Seed + 31.0) * 0.45;
+float s = starLayer(d, 24.0, 0.05 * dens, Seed) * 2.2;
+s += starLayer(d, 70.0, 0.035 * dens, Seed + 9.0) * 1.0;
+s += starLayer(d, 180.0, 0.03 * dens, Seed + 31.0) * 0.35;
 float3 tintv = lerp(float3(0.75, 0.82, 1.0), float3(1.0, 0.85, 0.65), hash13(floor(d * 90.0 + Seed)));
 col += tintv * s;
 return col;
@@ -430,6 +430,35 @@ def build_emissive(mat):
     MEL.connect_material_property(color, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
 
 
+def ensure_audio():
+    """Import the generated WAVs in RawAudio/ as SoundWaves under /Game/Audio (loops flagged)."""
+    import glob
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    files = sorted(glob.glob(os.path.join(root, "RawAudio", "*.wav")))
+    tasks = []
+    for f in files:
+        name = os.path.splitext(os.path.basename(f))[0]
+        if EAL.does_asset_exist(f"/Game/Audio/{name}") and not FORCE:
+            continue
+        task = unreal.AssetImportTask()
+        task.set_editor_property("filename", f)
+        task.set_editor_property("destination_path", "/Game/Audio")
+        task.set_editor_property("destination_name", name)
+        task.set_editor_property("automated", True)
+        task.set_editor_property("replace_existing", True)
+        task.set_editor_property("save", True)
+        tasks.append(task)
+    if tasks:
+        AT.import_asset_tasks(tasks)
+    for f in files:
+        name = os.path.splitext(os.path.basename(f))[0]
+        sw = unreal.load_asset(f"/Game/Audio/{name}")
+        if sw and name.endswith("_loop"):
+            sw.set_editor_property("looping", True)
+            EAL.save_asset(f"/Game/Audio/{name}")
+    log(f"audio: {len(files)} waves ({len(tasks)} imported)")
+
+
 def ensure_map():
     path = "/Game/Maps/Space"
     if EAL.does_asset_exist(path) and not FORCE:
@@ -455,4 +484,5 @@ ensure_material("M_Planet", build_planet)
 ensure_material("M_Sky", build_sky)
 ensure_material("M_Tunnel", build_tunnel)
 ensure_map()
+ensure_audio()
 log("done")

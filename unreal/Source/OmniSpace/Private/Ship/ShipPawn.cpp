@@ -1,5 +1,6 @@
 #include "Ship/ShipPawn.h"
 #include "Ship/Cockpit.h"
+#include "Ship/ShipAudio.h"
 #include "Core/OmniGameMode.h"
 #include "Galaxy/GalaxySubsystem.h"
 #include "World/OmniAssets.h"
@@ -46,7 +47,9 @@ AShipPawn::AShipPawn()
 	PP.bOverride_AutoExposureBias = true;
 	PP.AutoExposureBias = 0.0f;
 	PP.bOverride_BloomIntensity = true;
-	PP.BloomIntensity = 0.35f;
+	PP.BloomIntensity = 0.25f;
+	PP.bOverride_BloomThreshold = true;
+	PP.BloomThreshold = 1.2f; // only the sun, engines and bright lights bloom, not the star field
 	AutoPossessPlayer = EAutoReceiveInput::Player0;
 }
 
@@ -55,6 +58,8 @@ void AShipPawn::BeginPlay()
 	Super::BeginPlay();
 	Orientation = GetActorQuat();
 	OmniCockpit::Build(this, Root);
+	Audio = NewObject<UShipAudio>(this);
+	Audio->Init(this);
 	// hyperspace tunnel: a long cylinder around the camera along +X, shown only while jumping
 	Tunnel = NewObject<UStaticMeshComponent>(this);
 	Tunnel->SetStaticMesh(OmniAssets::CylinderMesh());
@@ -203,6 +208,7 @@ void AShipPawn::SetTarget(const FString& Id)
 {
 	TargetId = Id;
 	if (!Id.IsEmpty()) JumpTargetId.Empty();
+	if (Audio) Audio->Play(TEXT("blip"), 0.6f);
 	if (!Id.IsEmpty()) Msg(FString::Printf(TEXT("Target: %s"), *Id));
 }
 
@@ -247,8 +253,10 @@ void AShipPawn::ToggleAutopilot()
 	if (!bAutopilot && TargetId.IsEmpty() && JumpTargetId.IsEmpty())
 	{
 		Msg(TEXT("Autopilot needs a target (T) or a jump destination (N)"));
+		if (Audio) Audio->Play(TEXT("deny"));
 		return;
 	}
+	if (Audio) Audio->Play(TEXT("blip"));
 	bAutopilot = !bAutopilot;
 	ApStage = 0;
 	Stick = FVector2D::ZeroVector; // residual mouse motion must not count as a manual override
@@ -478,7 +486,8 @@ void AShipPawn::RequestDocking()
 		double D = FVector::Dist(P, Ship);
 		if (D < BestD || (Id == TargetId && D < DOCK_RANGE)) { BestD = D; Best = Id; }
 	}
-	if (Best.IsEmpty()) { Msg(TEXT("No station within 7.5 km")); return; }
+	if (Best.IsEmpty()) { Msg(TEXT("No station within 7.5 km")); if (Audio) Audio->Play(TEXT("deny")); return; }
+	if (Audio) Audio->Play(TEXT("chime"), 0.8f);
 	AStationActor* St = FindStation(Best);
 	DockingStationId = Best;
 	DockingBay = St->BayPositions.Num() ? FMath::RandRange(0, St->BayPositions.Num() - 1) : 0;
@@ -642,6 +651,7 @@ void AShipPawn::Impact(const FVector& N, double Mult)
 	Velocity *= 0.6;
 	if (Speed < 15 || Time - LastImpact < 0.6) return;
 	LastImpact = Time;
+	LastImpactTime = Time;
 	Damage(Speed * 0.0022 * Mult);
 }
 
@@ -853,6 +863,7 @@ void AShipPawn::Tick(float Dt)
 	default: break;
 	}
 	if (Time - LastHit > 4) Shields = FMath::Min(1.0, Shields + Dt * 0.04);
+	if (Audio) Audio->Update(Dt);
 	if (Tunnel && Mode != EFlightMode::Hyperspace && Tunnel->IsVisible()) { Tunnel->SetVisibility(false); Tunnel->SetHiddenInGame(true); }
 	SetActorLocation(FVector::ZeroVector);
 }

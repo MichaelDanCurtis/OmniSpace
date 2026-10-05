@@ -62,6 +62,8 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Ship") FStarDescriptor JumpTarget;
 	UPROPERTY(BlueprintReadOnly, Category = "Ship") double JumpRangeLy = 18.0;
 	UPROPERTY(BlueprintReadOnly, Category = "Ship") double HyperT = 0;
+	UPROPERTY(BlueprintReadOnly, Category = "Ship") double LastImpactTime = -100;
+	UPROPERTY() TObjectPtr<class UShipAudio> Audio;
 
 	UFUNCTION(BlueprintCallable, Category = "Ship") void Msg(const FString& Text);
 	UFUNCTION(BlueprintCallable, Category = "Ship") void SetTarget(const FString& Id);
