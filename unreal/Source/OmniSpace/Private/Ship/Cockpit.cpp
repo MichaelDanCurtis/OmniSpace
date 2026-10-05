@@ -57,15 +57,16 @@ void OmniCockpit::Build(AActor* Owner, USceneComponent* Parent)
 
 	// Camera sits at the origin looking +X with a 70 deg horizontal FOV (~42 deg vertical), so
 	// anything that should be on screen must lie within ~35 deg sideways and ~21 deg up/down.
+	// FRotator pitch is positive nose-UP: a slab with +16 pitch has its far (+X) edge raised.
 	// --- dashboard: a raked slab across the bottom of the view with three screens
-	Part(Owner, Parent, Cube, FVector(1.25, 0, -0.34), FRotator(-16, 0, 0), FVector(0.55, 2.4, 0.08), Hull, Dark, 0.5f);
-	Part(Owner, Parent, Cube, FVector(1.52, 0, -0.26), FRotator(-16, 0, 0), FVector(0.05, 2.44, 0.05), Hull, Trim, 0.2f);
+	Part(Owner, Parent, Cube, FVector(1.25, 0, -0.34), FRotator(16, 0, 0), FVector(0.55, 2.4, 0.08), Hull, Dark, 0.5f);
+	Part(Owner, Parent, Cube, FVector(1.52, 0, -0.26), FRotator(16, 0, 0), FVector(0.05, 2.44, 0.05), Hull, Trim, 0.2f);
 	for (int i = -1; i <= 1; i++)
 	{
-		Part(Owner, Parent, Cube, FVector(1.22, i * 0.62, -0.295), FRotator(-16, 0, 0), FVector(0.34, 0.50, 0.012), Em, Screen);
-		Part(Owner, Parent, Cube, FVector(1.40, i * 0.62, -0.245), FRotator(-16, 0, 0), FVector(0.01, 0.46, 0.006), Em, i == 0 ? Amber : Cyan);
+		Part(Owner, Parent, Cube, FVector(1.22, i * 0.62, -0.295), FRotator(16, 0, 0), FVector(0.34, 0.50, 0.012), Em, Screen);
+		Part(Owner, Parent, Cube, FVector(1.40, i * 0.62, -0.245), FRotator(16, 0, 0), FVector(0.01, 0.46, 0.006), Em, i == 0 ? Amber : Cyan);
 	}
-	Part(Owner, Parent, Cube, FVector(1.53, 0, -0.235), FRotator(-16, 0, 0), FVector(0.01, 2.3, 0.004), Em, Cyan);
+	Part(Owner, Parent, Cube, FVector(1.53, 0, -0.235), FRotator(16, 0, 0), FVector(0.01, 2.3, 0.004), Em, Cyan);
 	// --- side consoles at the edges of the view
 	for (int s = -1; s <= 1; s += 2)
 	{
@@ -88,9 +89,9 @@ void OmniCockpit::Build(AActor* Owner, USceneComponent* Parent)
 	Beam(Owner, Parent, SillL, FVector(0.4, -1.15, -0.34), 0.09, 0.09, Hull, Frame);
 	Beam(Owner, Parent, SillR, FVector(0.4, 1.15, -0.34), 0.09, 0.09, Hull, Frame);
 	// --- overhead panel just above the top rail with a row of switch lights
-	Part(Owner, Parent, Cube, FVector(1.0, 0, 0.55), FRotator(20, 0, 0), FVector(0.45, 1.3, 0.07), Hull, Dark, 0.4f);
+	Part(Owner, Parent, Cube, FVector(1.0, 0, 0.55), FRotator(-20, 0, 0), FVector(0.45, 1.3, 0.07), Hull, Dark, 0.4f);
 	for (int i = -3; i <= 3; i++)
-		Part(Owner, Parent, Cube, FVector(1.02, i * 0.16, 0.505), FRotator(20, 0, 0), FVector(0.03, 0.03, 0.01), Em, (i % 2) ? Cyan : Amber);
+		Part(Owner, Parent, Cube, FVector(1.02, i * 0.16, 0.505), FRotator(-20, 0, 0), FVector(0.03, 0.03, 0.01), Em, (i % 2) ? Cyan : Amber);
 	// --- hull shell behind and around the pilot so turning never shows empty space
 	Part(Owner, Parent, Cube, FVector(-0.9, 0, 0.1), FRotator::ZeroRotator, FVector(0.3, 2.8, 2.4), Hull, Dark, 0.6f);
 	Part(Owner, Parent, Cube, FVector(0.3, 0, -1.1), FRotator::ZeroRotator, FVector(2.6, 2.8, 0.2), Hull, Dark, 0.6f);
@@ -103,7 +104,7 @@ void OmniCockpit::Build(AActor* Owner, USceneComponent* Parent)
 	L->SetupAttachment(Parent);
 	L->SetRelativeLocation(FVector(40, 0, 60));
 	L->SetIntensityUnits(ELightUnits::Candelas);
-	L->SetIntensity(6.f); // ~4 lux on the dash: readable, well below the 8 lux sun
+	L->SetIntensity(1.2f); // dim fill: the 8 lux sun must still dominate
 	L->SetLightColor(FLinearColor(0.75f, 0.85f, 1.f));
 	L->SetAttenuationRadius(400.f);
 	// a second warm light low in the dash so the consoles glow
@@ -111,7 +112,7 @@ void OmniCockpit::Build(AActor* Owner, USceneComponent* Parent)
 	L2->SetupAttachment(Parent);
 	L2->SetRelativeLocation(FVector(110, 0, -20));
 	L2->SetIntensityUnits(ELightUnits::Candelas);
-	L2->SetIntensity(2.5f);
+	L2->SetIntensity(0.5f);
 	L2->SetLightColor(FLinearColor(1.f, 0.75f, 0.45f));
 	L2->SetAttenuationRadius(250.f);
 	L2->SetCastShadows(false);
