@@ -202,3 +202,9 @@ void ASystemDirector::DebugToggle(int32 What)
 	if (A) A->SetActorHiddenInGame(!A->IsHidden());
 	UE_LOG(LogOmniSpace, Log, TEXT("DebugToggle %d -> hidden=%d"), What, A ? A->IsHidden() : -1);
 }
+
+FString ASystemDirector::GetEntityKind(const FString& Id) const
+{
+	for (const FUniverseEntity& E : Entities) if (E.Id == Id) return E.Kind;
+	return FString();
+}

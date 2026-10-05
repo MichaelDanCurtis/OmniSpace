@@ -66,6 +66,8 @@ public:
 
 	/** Nearest body surface distance (m) and its id; for supercruise speed caps. */
 	double NearestBody(FString& OutId) const;
+	/** Entity kind ("star" | "planet" | "moon" | "station" | "poi"), empty if unknown. */
+	FString GetEntityKind(const FString& Id) const;
 
 	/** Universe->world conversion (cm). */
 	FVector ToWorld(const FVector& UniversePosM) const { return (UniversePosM - ShipPos) * 100.0; }
