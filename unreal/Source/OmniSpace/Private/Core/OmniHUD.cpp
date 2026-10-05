@@ -88,6 +88,12 @@ void AOmniHUD::DrawHUD()
 	}
 	if (Ship->IsMassLocked() && Ship->Mode == EFlightMode::Normal) Line(TEXT("MASS LOCKED"), Amber);
 	if (Ship->bAutopilot) Line(TEXT("AUTOPILOT"), FLinearColor::Green);
+	if (D)
+	{
+		FString NearId;
+		double NearD = D->NearestBody(NearId);
+		if (!NearId.IsEmpty()) Line(FString::Printf(TEXT("NEAREST %s  %s   STAR %s"), *NearId.ToUpper(), *FmtDist(NearD), *FmtDist(D->GetShipUniversePos().Size())), FLinearColor(0.5f, 0.6f, 0.7f));
+	}
 	if (!Ship->DockingStationId.IsEmpty() && Ship->Mode == EFlightMode::Normal) Line(FString::Printf(TEXT("DOCKING: %s BAY %d"), *Ship->DockingStationId, Ship->DockingBay + 1), FLinearColor::Green);
 
 	// target
