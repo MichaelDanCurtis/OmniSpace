@@ -54,7 +54,9 @@ float ridged(float3 p, int oct){
 }
 float hash13(float3 p){ p=frac(p*0.1031); p+=dot(p,p.zyx+31.32); return frac((p.x+p.y)*p.z); }
 float3 hash33(float3 p){ p=frac(p*float3(0.1031,0.1030,0.0973)); p+=dot(p,p.yxz+33.33); return frac((p.xxy+p.yxx)*p.zyx); }
-// Point stars on a 3D lattice projected onto the unit sphere: density per cell, size-weighted brightness.
+// Point stars on a 3D lattice: each lattice cell near the ray dir*cells may hold a star at a
+// random point p inside it; the star is drawn where the view ray passes within its angular
+// radius of p. Sizes are in radians so they stay ~1-3 px whatever the lattice density.
 float starLayer(float3 dir, float cells, float density, float seed){
   float3 q = dir * cells + seed;
   float3 cell = floor(q);
@@ -63,13 +65,12 @@ float starLayer(float3 dir, float cells, float density, float seed){
     float3 c = cell + float3(x,y,z);
     float3 h = hash33(c);
     if (h.x > density) continue;
-    // star direction: the cell centre in the UNseeded lattice (the seed only offsets which
-    // cells we hash; leaving it in made every cell point the same way -> a wall of light)
-    float3 sp = normalize(c + h - seed);
-    float d = distance(dir, normalize(sp));
+    float3 p = c + h - seed;            // star point in the unseeded lattice
+    float3 pn = normalize(p);
+    float d = length(dir - pn);         // ~ angular distance (radians) for small angles
     float mag = 0.35 + 0.65 * hash13(c + 7.1);
-    float rad = (0.35 + 1.4 * pow(hash13(c + 3.3), 6.0)) / cells;
-    best = max(best, mag * smoothstep(rad, rad * 0.25, d));
+    float rad = 0.0009 + 0.0022 * pow(hash13(c + 3.3), 6.0);
+    best = max(best, mag * smoothstep(rad, rad * 0.3, d));
   }
   return best;
 }
