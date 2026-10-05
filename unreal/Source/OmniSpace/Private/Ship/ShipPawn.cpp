@@ -120,10 +120,10 @@ void AShipPawn::SetupPlayerInputComponent(UInputComponent* IC)
 	IC->BindKey(EKeys::LeftMouseButton, IE_Pressed, this, &AShipPawn::OnMouseLock);
 	IC->BindKey(EKeys::P, IE_Pressed, this, &AShipPawn::OnToggleAutopilot);
 	IC->BindKey(EKeys::N, IE_Pressed, this, &AShipPawn::OnCycleJump);
-	IC->BindKey(EKeys::F5, IE_Pressed, this, &AShipPawn::OnDebugSky);
-	IC->BindKey(EKeys::F6, IE_Pressed, this, &AShipPawn::OnDebugStar);
-	IC->BindKey(EKeys::F7, IE_Pressed, this, &AShipPawn::OnDebugBodies);
-	IC->BindKey(EKeys::F8, IE_Pressed, this, &AShipPawn::OnDebugCockpit);
+	IC->BindKey(EKeys::Seven, IE_Pressed, this, &AShipPawn::OnDebugSky);
+	IC->BindKey(EKeys::Eight, IE_Pressed, this, &AShipPawn::OnDebugStar);
+	IC->BindKey(EKeys::Nine, IE_Pressed, this, &AShipPawn::OnDebugBodies);
+	IC->BindKey(EKeys::Zero, IE_Pressed, this, &AShipPawn::OnDebugCockpit);
 	IC->BindKey(EKeys::H, IE_Pressed, this, &AShipPawn::OnEngageJump);
 }
 

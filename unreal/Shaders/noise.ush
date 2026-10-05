@@ -63,7 +63,9 @@ float starLayer(float3 dir, float cells, float density, float seed){
     float3 c = cell + float3(x,y,z);
     float3 h = hash33(c);
     if (h.x > density) continue;
-    float3 sp = normalize(c + h); // star direction
+    // star direction: the cell centre in the UNseeded lattice (the seed only offsets which
+    // cells we hash; leaving it in made every cell point the same way -> a wall of light)
+    float3 sp = normalize(c + h - seed);
     float d = distance(dir, normalize(sp));
     float mag = 0.35 + 0.65 * hash13(c + 7.1);
     float rad = (0.35 + 1.4 * pow(hash13(c + 3.3), 6.0)) / cells;
