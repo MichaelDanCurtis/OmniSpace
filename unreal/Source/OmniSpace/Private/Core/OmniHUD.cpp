@@ -2,6 +2,7 @@
 #include "Ship/ShipPawn.h"
 #include "World/SystemDirector.h"
 #include "Core/OmniGameMode.h"
+#include "Components/StaticMeshComponent.h"
 #include "Engine/Canvas.h"
 #include "Engine/Font.h"
 #include "Engine/Engine.h"
@@ -92,7 +93,7 @@ void AOmniHUD::DrawHUD()
 	{
 		FString NearId;
 		double NearD = D->NearestBody(NearId);
-		if (!NearId.IsEmpty()) Line(FString::Printf(TEXT("NEAREST %s  %s   STAR %s"), *NearId.ToUpper(), *FmtDist(NearD), *FmtDist(D->GetShipUniversePos().Size())), FLinearColor(0.5f, 0.6f, 0.7f));
+		if (!NearId.IsEmpty()) Line(FString::Printf(TEXT("NEAREST %s  %s   STAR %s   tunnel=%d"), *NearId.ToUpper(), *FmtDist(NearD), *FmtDist(D->GetShipUniversePos().Size()), Ship->Tunnel && Ship->Tunnel->IsVisible() ? 1 : 0), FLinearColor(0.5f, 0.6f, 0.7f));
 	}
 	if (!Ship->DockingStationId.IsEmpty() && Ship->Mode == EFlightMode::Normal) Line(FString::Printf(TEXT("DOCKING: %s BAY %d"), *Ship->DockingStationId, Ship->DockingBay + 1), FLinearColor::Green);
 

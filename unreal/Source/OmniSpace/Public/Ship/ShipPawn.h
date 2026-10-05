@@ -135,9 +135,10 @@ protected:
 	void OnEngageJump() { EngageJump(); }
 	void BeginHyperspace();
 	void FlyHyperspace(float Dt);
+	double FsdWaitAlign = 0;
+public:
 	UPROPERTY() TObjectPtr<class UStaticMeshComponent> Tunnel;
 	UPROPERTY() TObjectPtr<class UMaterialInstanceDynamic> TunnelMID;
-	double FsdWaitAlign = 0;
 
 	struct FApControls { double Pitch = 0, Yaw = 0, Throttle = 0; bool bEngageSC = false, bDropSC = false; };
 	bool AutopilotControls(FApControls& Out);

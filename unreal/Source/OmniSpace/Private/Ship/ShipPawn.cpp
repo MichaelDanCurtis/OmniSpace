@@ -415,7 +415,7 @@ void AShipPawn::BeginHyperspace()
 	TargetId.Empty();
 	Velocity = FVector::ZeroVector;
 	AngVel = FVector::ZeroVector;
-	if (Tunnel) Tunnel->SetVisibility(true);
+	if (Tunnel) { Tunnel->SetHiddenInGame(false); Tunnel->SetVisibility(true); }
 	if (TunnelMID) TunnelMID->SetVectorParameterValue(TEXT("Color"), JumpTarget.LinearColor());
 	Msg(FString::Printf(TEXT("Hyperspace jump - %s - %.2f ly"), *JumpTarget.Name, D));
 	GM->BeginJump(JumpTarget);
@@ -837,5 +837,6 @@ void AShipPawn::Tick(float Dt)
 	default: break;
 	}
 	if (Time - LastHit > 4) Shields = FMath::Min(1.0, Shields + Dt * 0.04);
+	if (Tunnel && Mode != EFlightMode::Hyperspace && Tunnel->IsVisible()) { Tunnel->SetVisibility(false); Tunnel->SetHiddenInGame(true); }
 	SetActorLocation(FVector::ZeroVector);
 }
