@@ -234,10 +234,10 @@ float neb = pow(saturate(fbm(gd * 1.3 + 11.0, 5) * 0.5 + 0.5), 5.0) * (0.3 + 0.7
 col += Nebula * neb * 0.12;
 col += float3(0.12, 0.25, 0.4) * pow(saturate(fbm(gd * 1.7 - 5.0, 4) * 0.5 + 0.5), 7.0) * 0.14;
 // stars: three magnitude layers (sparse bright, medium, dense faint); more in the band
-float dens = 1.0 + 1.5 * smoothstep(0.5, 0.0, band);
-float s = starLayer(d, 24.0, 0.09 * dens, Seed) * 4.0;
-s += starLayer(d, 70.0, 0.24 * dens, Seed + 9.0) * 1.8;
-s += starLayer(d, 180.0, 0.4 * dens, Seed + 31.0) * 0.8;
+float dens = 1.0 + 1.0 * smoothstep(0.5, 0.0, band);
+float s = starLayer(d, 24.0, 0.05 * dens, Seed) * 3.0;
+s += starLayer(d, 70.0, 0.045 * dens, Seed + 9.0) * 1.4;
+s += starLayer(d, 180.0, 0.05 * dens, Seed + 31.0) * 0.45;
 float3 tintv = lerp(float3(0.75, 0.82, 1.0), float3(1.0, 0.85, 0.65), hash13(floor(d * 90.0 + Seed)));
 col += tintv * s;
 return col;
