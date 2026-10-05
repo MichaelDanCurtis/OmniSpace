@@ -125,6 +125,8 @@ void AShipPawn::SetupPlayerInputComponent(UInputComponent* IC)
 	IC->BindKey(EKeys::LeftMouseButton, IE_Pressed, this, &AShipPawn::OnMouseLock);
 	IC->BindKey(EKeys::P, IE_Pressed, this, &AShipPawn::OnToggleAutopilot);
 	IC->BindKey(EKeys::N, IE_Pressed, this, &AShipPawn::OnCycleJump);
+	IC->BindKey(EKeys::B, IE_Pressed, this, &AShipPawn::OnCycleFar);
+	IC->BindKey(EKeys::M, IE_Pressed, this, &AShipPawn::OnToggleMap);
 	IC->BindKey(EKeys::Seven, IE_Pressed, this, &AShipPawn::OnDebugSky);
 	IC->BindKey(EKeys::Eight, IE_Pressed, this, &AShipPawn::OnDebugStar);
 	IC->BindKey(EKeys::Nine, IE_Pressed, this, &AShipPawn::OnDebugBodies);
@@ -403,9 +405,63 @@ void AShipPawn::CycleJumpTarget()
 	const FStarDescriptor& Next = Near[(I + 1) % Near.Num()];
 	JumpTargetId = Next.Id;
 	JumpTarget = Next;
+	Route.Reset(); RouteDestId.Empty();
 	TargetId.Empty(); // navigation is one thing at a time: a jump destination or a local target
 	Msg(FString::Printf(TEXT("Jump target: %s  %.1f ly  (%s)"), *Next.Name, FVector::Dist(Next.Pos, Cur.Pos), *UGalaxySubsystem::ClassLabel(Next.Cls)));
 	GM->PrefetchJump(Next); // start the Forge early so the jump is quick
+}
+
+void AShipPawn::CycleFarTarget()
+{
+	AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode());
+	UGalaxySubsystem* Galaxy = GetGameInstance()->GetSubsystem<UGalaxySubsystem>();
+	if (!GM || !Galaxy) return;
+	const FStarDescriptor& Cur = GM->CurrentStar;
+	TArray<FStarDescriptor> Far = Galaxy->StarsNear(Cur.Pos, 60.0);
+	Far.RemoveAll([&](const FStarDescriptor& S) { return S.Id == Cur.Id || FVector::Dist(S.Pos, Cur.Pos) <= JumpRangeLy; });
+	if (Far.Num() == 0) { Msg(TEXT("No stars between jump range and 60 ly")); return; }
+	// prefer settled systems: sort by settlement desc then distance
+	Far.Sort([&](const FStarDescriptor& A, const FStarDescriptor& B)
+	{
+		if (FMath::Abs(A.Settlement - B.Settlement) > 0.25) return A.Settlement > B.Settlement;
+		return FVector::DistSquared(A.Pos, Cur.Pos) < FVector::DistSquared(B.Pos, Cur.Pos);
+	});
+	if (Far.Num() > 12) Far.SetNum(12);
+	int32 I = Far.IndexOfByPredicate([&](const FStarDescriptor& S) { return S.Id == RouteDestId; });
+	const FStarDescriptor& Dest = Far[(I + 1) % Far.Num()];
+	TArray<FString> Plotted = Galaxy->PlotRoute(Cur.Id, Dest.Id, JumpRangeLy);
+	if (Plotted.Num() < 2) { Msg(FString::Printf(TEXT("No route to %s within jump range"), *Dest.Name)); if (Audio) Audio->Play(TEXT("deny")); return; }
+	Route = Plotted;
+	Route.RemoveAt(0); // first entry is where we are
+	RouteDestId = Dest.Id;
+	FStarDescriptor Next;
+	if (Galaxy->GetStar(Route[0], Next))
+	{
+		JumpTargetId = Next.Id;
+		JumpTarget = Next;
+		TargetId.Empty();
+		GM->PrefetchJump(Next);
+	}
+	Msg(FString::Printf(TEXT("Route plotted: %s  %.1f ly  -  %d jumps  (first hop %s)"), *Dest.Name, FVector::Dist(Dest.Pos, Cur.Pos), Route.Num(), *Next.Name));
+	if (Audio) Audio->Play(TEXT("chime"), 0.6f);
+}
+
+void AShipPawn::AdvanceRoute()
+{
+	AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode());
+	UGalaxySubsystem* Galaxy = GetGameInstance()->GetSubsystem<UGalaxySubsystem>();
+	if (!GM || !Galaxy || Route.Num() == 0) return;
+	const int32 Idx = Route.IndexOfByKey(GM->CurrentStar.Id);
+	if (Idx >= 0) Route.RemoveAt(0, Idx + 1);
+	if (Route.Num() == 0) { RouteDestId.Empty(); Msg(TEXT("Route complete")); return; }
+	FStarDescriptor Next;
+	if (Galaxy->GetStar(Route[0], Next))
+	{
+		JumpTargetId = Next.Id;
+		JumpTarget = Next;
+		GM->PrefetchJump(Next);
+		Msg(FString::Printf(TEXT("Next hop: %s  %.1f ly  (%d to go)"), *Next.Name, FVector::Dist(Next.Pos, GM->CurrentStar.Pos), Route.Num()));
+	}
 }
 
 bool AShipPawn::EngageJump()
@@ -468,6 +524,7 @@ void AShipPawn::FlyHyperspace(float Dt)
 		if (Tunnel) Tunnel->SetVisibility(false);
 		JumpTargetId.Empty();
 		GM->CompleteJump(); // -> EnterSystem(..., true): places us near the star in supercruise
+		AdvanceRoute();
 	}
 }
 

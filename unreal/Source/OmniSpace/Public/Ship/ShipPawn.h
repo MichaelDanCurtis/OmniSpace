@@ -62,6 +62,10 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Ship") FStarDescriptor JumpTarget;
 	UPROPERTY(BlueprintReadOnly, Category = "Ship") double JumpRangeLy = 18.0;
 	UPROPERTY(BlueprintReadOnly, Category = "Ship") double HyperT = 0;
+	/** Multi-jump route (star ids, next hop first) and its final destination. */
+	UPROPERTY(BlueprintReadOnly, Category = "Ship") TArray<FString> Route;
+	UPROPERTY(BlueprintReadOnly, Category = "Ship") FString RouteDestId;
+	UPROPERTY(BlueprintReadOnly, Category = "Ship") bool bShowMap = false;
 	UPROPERTY(BlueprintReadOnly, Category = "Ship") double LastImpactTime = -100;
 	UPROPERTY() TObjectPtr<class UShipAudio> Audio;
 
@@ -73,6 +77,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Ship") void Launch();
 	UFUNCTION(BlueprintCallable, Category = "Ship") void ToggleAutopilot();
 	UFUNCTION(BlueprintCallable, Category = "Ship") void CycleJumpTarget();
+	/** Cycle through stars beyond jump range (up to 60 ly) and plot a multi-jump route. */
+	UFUNCTION(BlueprintCallable, Category = "Ship") void CycleFarTarget();
+	/** Called on arrival: advance the route to its next hop. */
+	void AdvanceRoute();
 	UFUNCTION(BlueprintCallable, Category = "Ship") bool EngageJump();
 	/** Direction (world) toward the jump target star; false if none. */
 	UFUNCTION(BlueprintPure, Category = "Ship") bool JumpDirection(FVector& OutDir) const;
@@ -134,6 +142,8 @@ protected:
 	void OnMouseLock();
 	void OnToggleAutopilot() { ToggleAutopilot(); }
 	void OnCycleJump() { CycleJumpTarget(); }
+	void OnCycleFar() { CycleFarTarget(); }
+	void OnToggleMap() { bShowMap = !bShowMap; }
 	void OnDebugSky();
 	void OnDebugStar();
 	void OnDebugBodies();
