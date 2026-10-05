@@ -1,0 +1,10 @@
+node_modules/
+.venv/
+server/.venv/
+data/
+*.sqlite3
+.env
+__pycache__/
+.pytest_cache/
+.DS_Store
+client/node_modules/
