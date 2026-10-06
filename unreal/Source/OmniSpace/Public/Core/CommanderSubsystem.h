@@ -101,7 +101,7 @@ class OMNISPACE_API UCommanderSubsystem : public UGameInstanceSubsystem
 public:
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 
-	UPROPERTY(BlueprintReadOnly, Category = "OmniSpace") FCommanderSave S;
+	UPROPERTY() FCommanderSave S;
 	static constexpr double CargoCap = 32.0;
 
 	void Save();
