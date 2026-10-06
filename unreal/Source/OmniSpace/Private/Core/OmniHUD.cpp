@@ -232,7 +232,7 @@ void AOmniHUD::DrawSystemMap(AShipPawn* Ship, UFont* Font, float W, float H, flo
 	DrawText(TEXT("click to target   T cycles targets   P autopilot   I close"), HudGrey, MX + 16 * U, MY + 36 * U, Font, 0.85f * U);
 	DrawText(FString::Printf(TEXT("%s  -  %s  -  %s  -  %s"), *Sys.Profile.Faction, *Sys.Profile.Government, *Sys.Profile.Economy, Sys.Source == TEXT("ai") ? TEXT("charted by the Stellar Forge") : TEXT("onboard survey")), HudCyanDim, MX + 16 * U, MY + 56 * U, Font, 0.85f * U);
 	// chart: star at the left, orbits on a log scale to the right
-	const float X0 = MX + 70 * U, X1 = MX + MW - PanelW - 40 * U, CY = MY + MH * 0.5f;
+	const float X0 = MX + 110 * U, X1 = MX + MW - PanelW - 40 * U, CY = MY + MH * 0.5f;
 	double OMin = 1e30, OMax = 1;
 	for (const FBodyData& B : Sys.Bodies) if (B.Parent == TEXT("star")) { OMin = FMath::Min(OMin, B.OrbitM); OMax = FMath::Max(OMax, B.OrbitM); }
 	for (const FBeltData& B : Sys.Belts) if (B.Parent == TEXT("star")) { OMin = FMath::Min(OMin, B.RadiusM); OMax = FMath::Max(OMax, B.RadiusM); }
@@ -241,8 +241,8 @@ void AOmniHUD::DrawSystemMap(AShipPawn* Ship, UFont* Font, float W, float H, flo
 	auto XOf = [&](double OrbitM) { return static_cast<float>(X0 + (X1 - X0) * FMath::Clamp((FMath::Loge(FMath::Max(OrbitM, 1.0)) - LMin) / FMath::Max(1e-6, LMax - LMin), 0.0, 1.0)); };
 	// the star
 	const FLinearColor SC = Sys.Star.LinearColor();
-	Circle(MX + 30 * U, CY, 22 * U, SC, 32, 3.f);
-	DrawText(Sys.Star.Name, HudCyanDim, MX + 12 * U, CY + 30 * U, Font, 0.8f * U);
+	Circle(MX + 50 * U, CY, 22 * U, SC, 32, 3.f);
+	DrawText(Sys.Star.Name, HudCyanDim, MX + 32 * U, CY + 30 * U, Font, 0.8f * U);
 	float MouseX = -1, MouseY = -1;
 	if (APlayerController* PC = GetOwningPlayerController()) PC->GetMousePosition(MouseX, MouseY);
 	FString Hover; float HoverD = 18 * U;
@@ -589,7 +589,7 @@ void AOmniHUD::DrawHUD()
 	}
 
 	// ---------------------------------------------------------------- station services (docked)
-	if (Ship->Mode == EFlightMode::Docked && Ship->bStationMenu && !Ship->bShowMap) DrawStationMenu(Ship, Font, W, H, U);
+	if (Ship->Mode == EFlightMode::Docked && Ship->bStationMenu && !Ship->bShowMap && !Ship->bShowSystemMap && !Ship->bShowHelp) DrawStationMenu(Ship, Font, W, H, U);
 
 	// ---------------------------------------------------------------- galaxy map overlay (M)
 	if (Ship->bShowMap && GM && !bHyper)
