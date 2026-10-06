@@ -66,7 +66,7 @@ void AShipPawn::BeginPlay()
 	Tunnel->SetStaticMesh(OmniAssets::CylinderMesh());
 	Tunnel->SetupAttachment(Root);
 	Tunnel->SetRelativeRotation(FRotator(90, 0, 0)); // cylinder axis Z -> X
-	Tunnel->SetRelativeScale3D(FVector(600, 600, 6000)); // 600 m across, 6 km long
+	Tunnel->SetRelativeScale3D(FVector(600, 600, 2800)); // 600 m across, 2.8 km long: the horizon fills the forward view
 	Tunnel->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	Tunnel->SetCastShadow(false);
 	Tunnel->SetVisibility(false);
@@ -1109,7 +1109,7 @@ void AShipPawn::Tick(float Dt)
 		// the streak field scrolls outward at a pace set by the charge; integrated here so a
 		// falling charge never makes the stars run backwards
 		if (WarpAmount > 0.001f) WarpFlow += Dt * (0.15f + 1.6f * WarpAmount * WarpAmount);
-		if (Director) Director->SetSkyWarp(WarpAmount, JD, WarpFlow);
+		if (Director) Director->SetSkyWarp(WarpAmount, JD, Orientation.GetUpVector(), WarpFlow);
 		float TargetFlash = 0.f;
 		if (FsdKind == EFsdKind::Jump && FsdProgress > 0.9) TargetFlash = static_cast<float>((FsdProgress - 0.9) / 0.1);
 		FlashAmount = FMath::Max(TargetFlash, FlashAmount - Dt * (Mode == EFlightMode::Hyperspace ? 0.9f : 1.6f));

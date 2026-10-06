@@ -252,7 +252,7 @@ float3 stars = 0;
   // move: the parallax of a field you are rushing through. Streaks lengthen toward the
   // periphery, where the stars peel away past the canopy.
   float3 wd = normalize(WarpDir);
-  float3 up = abs(wd.z) < 0.95 ? float3(0.0, 0.0, 1.0) : float3(1.0, 0.0, 0.0);
+  float3 up = normalize(WarpUp);          // the ship's up: the disk sits level with the canopy
   float3 e1 = normalize(cross(up, wd));
   float3 e2 = cross(wd, e1);
   float ct = dot(d, wd);
@@ -283,13 +283,15 @@ col += stars;
 return col;
 """
     flow = scalar_param(mat, "Flow", 0.0, -700, 750)   # accumulated streak scroll (CPU side)
-    node = custom(mat, code, ["LocalPos", "Seed", "Nebula", "Warp", "WarpDir", "Flow"], -300, 0)
+    warpup = vec_param(mat, "WarpUp", (0, 0, 1, 1), -700, 900)
+    node = custom(mat, code, ["LocalPos", "Seed", "Nebula", "Warp", "WarpDir", "Flow", "WarpUp"], -300, 0)
     MEL.connect_material_expressions(localpos, "", node, "LocalPos")
     MEL.connect_material_expressions(seed, "", node, "Seed")
     MEL.connect_material_expressions(tint, "", node, "Nebula")
     MEL.connect_material_expressions(warp, "", node, "Warp")
     MEL.connect_material_expressions(warpdir, "", node, "WarpDir")
     MEL.connect_material_expressions(flow, "", node, "Flow")
+    MEL.connect_material_expressions(warpup, "", node, "WarpUp")
     mat.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_UNLIT)
     mat.set_editor_property("two_sided", True)
     # "Is Sky": rendered at the far plane, so the dome never occludes anything however small it is.
@@ -316,13 +318,13 @@ float3 col = 0;
 if (abs(z) > 0.985) {
   // --- the horizon: a lensed black hole, its accretion disk level with the ship. Cap space:
   // local y is the ship's right, local x its down (the cylinder is pitched onto the forward axis).
-  float2 p = float2(LocalPos.y, -LocalPos.x) / 50.0 / 0.27;   // shadow radius = 27% of the cap
+  float2 p = float2(LocalPos.y, -LocalPos.x) / 50.0 / 0.3;    // shadow radius = 30% of the cap
   col = blackHole(p, Time);
-  // a faint slow swirl of infalling light outside the disk, tinted by the destination star
+  // infalling light far out, tinted by the destination star, dying away toward the rim
   float swirl = pow(saturate(snoise(float3(ang * 2.0 - Time * 0.4 + rr * 6.0, rr * 3.0, 5.0)) * 0.5 + 0.5), 4.0);
-  col += Color * swirl * smoothstep(0.3, 0.6, rr) * 0.6;
-  // blend the cap rim into the wall so the horizon has no hard circular edge
-  col = lerp(col, Color * 0.6, smoothstep(0.78, 1.0, rr));
+  col += Color * swirl * smoothstep(0.35, 0.7, rr) * 0.25;
+  // the rim fades to the same near-black the far end of the wall carries, so there is no edge
+  col = lerp(col, float3(0.02, 0.012, 0.045), smoothstep(0.82, 1.0, rr));
 } else {
   float3 q = float3(ang * 3.0, z * 4.0 - Time * 2.5, 0.0);
   float streak = pow(saturate(fbm(q, 4) * 0.5 + 0.5), 7.0);
@@ -330,9 +332,10 @@ if (abs(z) > 0.985) {
   float pulse = 0.75 + 0.25 * sin(Time * 4.0 + z * 6.0);
   // wisps that twist around the axis: space folding past the hull
   float twist = pow(saturate(snoise(float3(ang * 5.0 + z * 6.0 - Time * 1.5, z * 2.0, 7.0)) * 0.5 + 0.5), 5.0);
-  col = Color * (streak * 5.0 + fine * 3.0 + twist * 1.2) * pulse + Color * 0.04;
-  // brighter toward the horizon ahead, dark and quiet behind
-  col *= 0.35 + 0.65 * smoothstep(-1.0, 1.0, z);
+  float3 wcol = lerp(Color, float3(0.5, 0.3, 0.95), 0.55);   // the destination's colour, pulled violet
+  col = wcol * (streak * 2.2 + fine * 1.4 + twist * 0.6) * pulse + float3(0.02, 0.012, 0.045);
+  // bright beside the hull, falling to near-black at the far end where the horizon hangs
+  col *= 0.05 + 0.95 * smoothstep(1.0, -0.6, z);
 }
 return col;
 """

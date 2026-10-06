@@ -46,10 +46,11 @@ void ASkyActor::Setup(int32 Seed, const FLinearColor& NebulaTint)
 	}
 }
 
-void ASkyActor::SetWarp(float Warp, const FVector& Dir, float Flow)
+void ASkyActor::SetWarp(float Warp, const FVector& Dir, const FVector& Up, float Flow)
 {
 	if (!MID) return;
 	MID->SetScalarParameterValue(TEXT("Warp"), Warp);
+	MID->SetVectorParameterValue(TEXT("WarpUp"), FLinearColor(Up.X, Up.Y, Up.Z, 0));
 	MID->SetScalarParameterValue(TEXT("Flow"), Flow);
 	MID->SetVectorParameterValue(TEXT("WarpDir"), FLinearColor(Dir.X, Dir.Y, Dir.Z, 0));
 }
