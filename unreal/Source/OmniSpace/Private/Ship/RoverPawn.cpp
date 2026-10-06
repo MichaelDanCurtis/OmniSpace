@@ -86,11 +86,13 @@ void ARoverPawn::BuildBody()
 	USpotLightComponent* Lamp = NewObject<USpotLightComponent>(this);
 	Lamp->SetupAttachment(Chassis);
 	Lamp->SetRelativeLocation(FVector(160, 0, 100));
-	Lamp->SetRelativeRotation(FRotator(-8, 0, 0));
+	Lamp->SetRelativeRotation(FRotator(-10, 0, 0));
 	Lamp->SetIntensityUnits(ELightUnits::Candelas);
-	Lamp->SetIntensity(40.f);
-	Lamp->SetOuterConeAngle(32.f);
-	Lamp->SetAttenuationRadius(6000.f);
+	Lamp->SetIntensity(2500.f); // headlamp: lights the ground ~60 m out at the pinned exposure
+	Lamp->SetInnerConeAngle(20.f);
+	Lamp->SetOuterConeAngle(36.f);
+	Lamp->SetAttenuationRadius(12000.f);
+	Lamp->SetCastShadows(true);
 	Lamp->SetLightColor(FLinearColor(0.8f, 0.9f, 1.f));
 	Lamp->SetMobility(EComponentMobility::Movable);
 	Lamp->RegisterComponent();
