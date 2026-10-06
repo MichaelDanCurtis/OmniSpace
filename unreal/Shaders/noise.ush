@@ -90,9 +90,10 @@ float streakLayer(float ph, float th, float cellsPhi, float cellsTh, float flow,
     float2 c = cell + float2(i, -j);
     float cx = c.x - cellsPhi * floor(c.x / cellsPhi);
     float3 h = hash33(float3(cx, c.y, seed));
-    if (h.x > density) continue;
     float ph0 = (c.x + h.y) / cellsPhi * PI2 - PI1;
     float th0 = (c.y + h.z + flow) / cellsTh * PI1;
+    // cells shrink toward the poles of the warp frame; thin them so the sky stays even
+    if (h.x > density * saturate(sin(th0) + 0.06)) continue;
     float L = len * (0.35 + 0.65 * hash13(float3(cx, c.y, seed + 5.0)));
     float a = th - th0;
     if (a < 0.0 || a > L) continue;
@@ -121,8 +122,9 @@ float3 blackHole(float2 p, float Time){
   tex *= 0.85 + 0.15 * snoise(float3(p.x * 8.0 - Time * 0.8, p.y * 30.0, 9.0));
   float ext = 3.3;                                                   // disk outer edge
   // near side: the band through the centre, slightly below the midline, thinning outward
-  float bandT = 0.1 * (1.0 - 0.75 * smoothstep(0.8, ext, xa)) + 0.012;
-  float band = exp(-pow((p.y + 0.04) / bandT, 2.0)) * (1.0 - smoothstep(1.8, ext, xa));
+  float bandT = 0.13 * (1.0 - 0.75 * smoothstep(0.8, ext, xa)) + 0.012;
+  float bandF = 1.0 - smoothstep(1.8, ext, xa);
+  float band = (exp(-pow((p.y + 0.04) / bandT, 2.0)) + 0.3 * exp(-pow((p.y + 0.04) / (bandT * 3.0), 2.0))) * bandF;
   // far side bent over the top of the shadow, meeting the band at its sides
   float eTop = sqrt(p.x * p.x / (1.5 * 1.5) + p.y * p.y / (1.55 * 1.55));
   float topT = 0.11 * (1.0 - 0.55 * smoothstep(0.2, 1.4, xa)) + 0.02;

@@ -324,7 +324,7 @@ if (abs(z) > 0.985) {
   float swirl = pow(saturate(snoise(float3(ang * 2.0 - Time * 0.4 + rr * 6.0, rr * 3.0, 5.0)) * 0.5 + 0.5), 4.0);
   col += Color * swirl * smoothstep(0.35, 0.7, rr) * 0.25;
   // the rim fades to the same near-black the far end of the wall carries, so there is no edge
-  col = lerp(col, float3(0.02, 0.012, 0.045), smoothstep(0.82, 1.0, rr));
+  col = lerp(col, float3(0.02, 0.012, 0.045), smoothstep(0.55, 1.0, rr));
 } else {
   float3 q = float3(ang * 3.0, z * 4.0 - Time * 2.5, 0.0);
   float streak = pow(saturate(fbm(q, 4) * 0.5 + 0.5), 7.0);
@@ -336,6 +336,7 @@ if (abs(z) > 0.985) {
   col = wcol * (streak * 2.2 + fine * 1.4 + twist * 0.6) * pulse + float3(0.02, 0.012, 0.045);
   // bright beside the hull, falling to near-black at the far end where the horizon hangs
   col *= 0.05 + 0.95 * smoothstep(1.0, -0.6, z);
+  col += float3(0.02, 0.012, 0.045) * smoothstep(0.2, 1.0, z);
 }
 return col;
 """
