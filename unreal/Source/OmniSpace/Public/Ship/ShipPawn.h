@@ -72,6 +72,8 @@ public:
 	UPROPERTY() TObjectPtr<class ASurfaceTile> Tile;
 	UPROPERTY(BlueprintReadOnly, Category = "Ship") double AltitudeM = 0;
 	UPROPERTY(BlueprintReadOnly, Category = "Ship") bool bGear = false;
+	UPROPERTY(BlueprintReadOnly, Category = "Ship") bool bLandingLights = false;
+	void SetLandingLights(bool bOn, bool bAnnounce = true);
 	/** World position (cm) on the tile; the floating origin is paused while on the surface. */
 	FVector SurfacePos = FVector::ZeroVector;
 
@@ -152,6 +154,7 @@ protected:
 	void OnToggleSupercruise() { ToggleSupercruise(); }
 	void OnDock();
 	void OnRover();
+	void OnToggleLights() { SetLandingLights(!bLandingLights); }
 	void OnCycleTarget() { CycleTarget(); }
 	void OnMouseLock();
 	void OnToggleAutopilot() { ToggleAutopilot(); }
@@ -170,6 +173,7 @@ public:
 	UPROPERTY() TObjectPtr<class UStaticMeshComponent> Tunnel;
 	UPROPERTY() TObjectPtr<class UMaterialInstanceDynamic> TunnelMID;
 	UPROPERTY() TObjectPtr<class UStaticMeshComponent> Flash;
+	UPROPERTY() TArray<TObjectPtr<class USpotLightComponent>> LandingLights;
 	UPROPERTY() TObjectPtr<class UMaterialInstanceDynamic> FlashMID;
 	float WarpAmount = 0;      // sky streak 0..1
 	float WarpFlow = 0;        // accumulated streak scroll (never runs backwards)

@@ -123,6 +123,7 @@ void AOmniHUD::DrawHUD()
 		if (Ship->BoostTimer > 0) Status(TEXT("BOOST"), HudAmber);
 		if (Ship->Mode == EFlightMode::Surface) Status(FString::Printf(TEXT("ALTITUDE %s   %s"), *FmtDist(FMath::Max(0.0, Ship->AltitudeM)), Ship->Tile ? *Ship->Tile->GetBody().Name.ToUpper() : TEXT("")), HudCyan);
 		if (Ship->Mode == EFlightMode::Landed) Status(TEXT("G DEPLOY ROVER   L LIFT OFF"), HudGreen);
+		if (Ship->bLandingLights) Status(TEXT("LANDING LIGHTS"), HudWhite);
 	}
 
 	// ---------------------------------------------------------------- left: speed / throttle
@@ -341,6 +342,6 @@ void AOmniHUD::DrawHUD()
 			DrawText(Ship->Messages[i], FLinearColor(0.85f, 0.92f, 1.f, 0.95f - Age * 0.15f), 28 * U, Y, Font, 0.95f * U);
 			Y += 19 * U;
 		}
-		DrawText(TEXT("W/S throttle   mouse/arrows steer   A/D roll   Q/E R/F thrusters   Tab boost   J supercruise   T target   N jump target   B plot route   M map   H jump   P autopilot   L dock/land/launch   G rover   Z FA   X stop   C 75%"), FLinearColor(0.5f, 0.6f, 0.7f, 0.8f), 28 * U, H - 16 * U, Font, 0.8f * U);
+		DrawText(TEXT("W/S throttle   mouse/arrows steer   A/D roll   Q/E R/F thrusters   Tab boost   J supercruise   T target   N jump target   B plot route   M map   H jump   P autopilot   L dock/land/launch   G rover   K lights   Z FA   X stop   C 75%"), FLinearColor(0.5f, 0.6f, 0.7f, 0.8f), 28 * U, H - 16 * U, Font, 0.8f * U);
 	}
 }

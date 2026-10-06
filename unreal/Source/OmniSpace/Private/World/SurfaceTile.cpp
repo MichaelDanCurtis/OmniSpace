@@ -21,7 +21,7 @@ ASurfaceTile::ASurfaceTile()
 	Terrain->SetupAttachment(Root);
 	Terrain->bUseAsyncCooking = false;
 	Terrain->SetCollisionProfileName(TEXT("BlockAll"));
-	Terrain->SetMobility(EComponentMobility::Static);
+	Terrain->SetMobility(EComponentMobility::Movable); // the root is movable; a static child cannot attach to it
 	Water = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Water"));
 	Water->SetupAttachment(Root);
 	Water->SetStaticMesh(OmniAssets::PlaneMesh());

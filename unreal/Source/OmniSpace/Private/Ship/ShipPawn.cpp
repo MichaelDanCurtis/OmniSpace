@@ -6,6 +6,7 @@
 #include "Galaxy/GalaxySubsystem.h"
 #include "World/OmniAssets.h"
 #include "Components/StaticMeshComponent.h"
+#include "Components/SpotLightComponent.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "World/SystemDirector.h"
 #include "World/StationActor.h"
@@ -85,6 +86,38 @@ void AShipPawn::BeginPlay()
 	Flash->SetTranslucentSortPriority(100);
 	Flash->RegisterComponent();
 	FlashMID = OmniAssets::MakeMID(Flash, OmniAssets::MaterialOr(TEXT("/Game/Materials/M_Flash.M_Flash"), TEXT("/Engine/EngineMaterials/EmissiveMeshMaterial.EmissiveMeshMaterial")), this);
+	// landing lights: floods around the hull that throw light onto the ground - two on the nose
+	// aimed down the approach, one under each wing aimed down and out, a wide belly light and a
+	// tail light. Off until the ship drops into an atmosphere or the pilot asks for them (K).
+	{
+		struct FLamp { FVector Pos; FRotator Rot; float Cd; float Inner; float Outer; FLinearColor Col; };
+		const FLamp Lamps[] = {
+			{ FVector(600, -220, -120), FRotator(-28, -8, 0), 90000.f, 22.f, 38.f, FLinearColor(0.85f, 0.92f, 1.f) },
+			{ FVector(600,  220, -120), FRotator(-28,  8, 0), 90000.f, 22.f, 38.f, FLinearColor(0.85f, 0.92f, 1.f) },
+			{ FVector(-200, -900, -150), FRotator(-70, -50, 0), 60000.f, 30.f, 50.f, FLinearColor(0.9f, 0.95f, 1.f) },
+			{ FVector(-200,  900, -150), FRotator(-70,  50, 0), 60000.f, 30.f, 50.f, FLinearColor(0.9f, 0.95f, 1.f) },
+			{ FVector(0, 0, -200), FRotator(-90, 0, 0), 40000.f, 45.f, 70.f, FLinearColor(1.f, 0.95f, 0.85f) },
+			{ FVector(-900, 0, -100), FRotator(-45, 180, 0), 30000.f, 30.f, 55.f, FLinearColor(1.f, 0.6f, 0.4f) },
+		};
+		for (const FLamp& Lp : Lamps)
+		{
+			USpotLightComponent* S = NewObject<USpotLightComponent>(this);
+			S->SetupAttachment(Root);
+			S->SetRelativeLocation(Lp.Pos);
+			S->SetRelativeRotation(Lp.Rot);
+			S->SetIntensityUnits(ELightUnits::Candelas);
+			S->SetIntensity(Lp.Cd);
+			S->SetLightColor(Lp.Col);
+			S->SetInnerConeAngle(Lp.Inner);
+			S->SetOuterConeAngle(Lp.Outer);
+			S->SetAttenuationRadius(60000.f); // 600 m
+			S->SetCastShadows(true);
+			S->SetVisibility(false);
+			S->SetMobility(EComponentMobility::Movable);
+			S->RegisterComponent();
+			LandingLights.Add(S);
+		}
+	}
 	if (APlayerController* PC = Cast<APlayerController>(GetController()))
 	{
 		PC->bShowMouseCursor = false;
@@ -140,6 +173,7 @@ void AShipPawn::SetupPlayerInputComponent(UInputComponent* IC)
 	IC->BindKey(EKeys::P, IE_Pressed, this, &AShipPawn::OnToggleAutopilot);
 	IC->BindKey(EKeys::N, IE_Pressed, this, &AShipPawn::OnCycleJump);
 	IC->BindKey(EKeys::G, IE_Pressed, this, &AShipPawn::OnRover);
+	IC->BindKey(EKeys::K, IE_Pressed, this, &AShipPawn::OnToggleLights);
 	IC->BindKey(EKeys::B, IE_Pressed, this, &AShipPawn::OnCycleFar);
 	IC->BindKey(EKeys::M, IE_Pressed, this, &AShipPawn::OnToggleMap);
 	IC->BindKey(EKeys::Seven, IE_Pressed, this, &AShipPawn::OnDebugSky);
@@ -567,6 +601,15 @@ void AShipPawn::OnDock()
 	}
 }
 
+void AShipPawn::SetLandingLights(bool bOn, bool bAnnounce)
+{
+	if (bOn == bLandingLights) return;
+	bLandingLights = bOn;
+	for (USpotLightComponent* S : LandingLights) if (S) S->SetVisibility(bOn);
+	if (bAnnounce) Msg(bOn ? TEXT("Landing lights on") : TEXT("Landing lights off"));
+	if (Audio && bAnnounce) Audio->Play(TEXT("blip"));
+}
+
 void AShipPawn::OnRover()
 {
 	AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode());
@@ -607,16 +650,21 @@ void AShipPawn::StartDescent(ASurfaceTile* InTile)
 	SetActorLocation(SurfacePos);
 	Orientation = FRotationMatrix::MakeFromXZ(FVector(1, 0, -0.12), FVector::UpVector).ToQuat();
 	SetActorRotation(Orientation);
-	Velocity = FVector(140, 0, -15);
+	Velocity = FVector(110, 0, -10);
 	Throttle = 0.4;
 	LastThrottleInput = Time;
 	bGear = true;
 	AngVel = FVector::ZeroVector;
-	Msg(TEXT("Atmospheric flight: W/S throttle, R/F climb, L to set down on the pad. Climb above 3 km to leave."));
+	bAutopilot = true; // the approach flies itself to the pad; any stick, throttle or climb input takes over
+	ApStage = 0;
+	SetLandingLights(true, false);
+	Msg(TEXT("Landing approach on autopilot - touch any control to fly it yourself. W/S throttle, R/F climb, K lights. Climb above 3 km to leave."));
 }
 
 void AShipPawn::EndSurface()
 {
+	SetLandingLights(false, false);
+	bAutopilot = false;
 	Tile = nullptr;
 	SurfacePos = FVector::ZeroVector;
 	SetActorLocation(FVector::ZeroVector);
@@ -637,18 +685,51 @@ void AShipPawn::FlySurface(float Dt)
 		const FVector Right = Orientation.GetRightVector();
 		Roll = Clamp(-Right.Z * 2.5, -0.6, 0.6);
 	}
-	Rotate(Dt, Pitch, Yaw, Roll, FVector(0.7, 0.45, 1.4));
-	// keep the nose from pitching too far: a ship in atmosphere, not a space loop
 	const double G = Tile->Gravity();
 	FVector Local = Orientation.UnrotateVector(Velocity);
-	const double FwdTarget = Throttle * MaxSpeed * 0.8;
+	double FwdTarget = Throttle * MaxSpeed * 0.8;
+	double VzTarget = InVert * 45.0;
+	double StrafeTarget = InStrafe * 60;
+	if (bAutopilot && bFlightAssist)
+	{
+		// --- automatic approach: fly to the pad on a glide slope, clear the terrain ahead, hover
+		// in over the pad and settle. Flight assist does the flying; this just sets the targets.
+		const FVector PosM = SurfacePos / 100.0;
+		const FVector ToPad(-PosM.X, -PosM.Y, 0);
+		const double Dist = ToPad.Size();
+		const double PadZ = Tile->HeightAt(0, 0);
+		const FVector DirH = Dist > 1.0 ? ToPad / Dist : Orientation.GetForwardVector();
+		const FVector L = Orientation.UnrotateVector(DirH);
+		const double YawE = FMath::Atan2(L.Y, L.X);
+		// nose: toward the pad, pitched a little down on the slope, level when hovering
+		const double PitchNow = FMath::Asin(FMath::Clamp(Orientation.GetForwardVector().Z, -1.0, 1.0));
+		const double PitchWant = Dist > 150 ? -0.18 : 0.0;
+		const double PitchCmd = Clamp((PitchWant - PitchNow) * 3.0, -0.6, 0.6);
+		Rotate(Dt, PitchCmd, Clamp(YawE * 2.5, -0.8, 0.8), Roll, FVector(0.7, 0.45, 1.4));
+		const double Facing = FMath::Cos(YawE);
+		FwdTarget = Dist > 25 ? Clamp(Dist / 9.0, 5.0, 95.0) * FMath::Max(0.0, Facing) : 0.0;
+		Throttle = FwdTarget / (MaxSpeed * 0.8);
+		StrafeTarget = Dist < 60 ? Clamp(L.Y * Dist * 0.5, -8.0, 8.0) : 0.0;
+		// altitude: a glide slope down to the pad, never below 120 m over the ground 350 m ahead
+		const FVector Ahead = PosM + DirH * 350.0;
+		const double GroundAhead = FMath::Max(Tile->HeightAt(Ahead.X, Ahead.Y), Tile->WaterLevel());
+		const double GroundHere = FMath::Max(Tile->HeightAt(PosM.X, PosM.Y), Tile->WaterLevel());
+		double WantZ = PadZ + Clamp(Dist * 0.45, 0.0, 1400.0);
+		if (Dist > 40) WantZ = FMath::Max(WantZ, FMath::Max(GroundAhead + 120.0, GroundHere + 60.0));
+		else WantZ = PadZ; // settle
+		VzTarget = Clamp((WantZ - PosM.Z) * 0.6, Dist > 40 ? -30.0 : -5.0, 30.0);
+		if (Dist > 25 && Dist < 60 && FVector(Velocity.X, Velocity.Y, 0).Size() > 12) VzTarget = FMath::Max(VzTarget, 0.0); // bleed speed before settling
+	}
+	else
+	{
+		Rotate(Dt, Pitch, Yaw, Roll, FVector(0.7, 0.45, 1.4));
+	}
 	if (bFlightAssist)
 	{
 		Local.X += Clamp(FwdTarget - Local.X, -120 * Dt, 120 * Dt);
-		Local.Y += Clamp(InStrafe * 60 - Local.Y, -80 * Dt, 80 * Dt);
+		Local.Y += Clamp(StrafeTarget - Local.Y, -80 * Dt, 80 * Dt);
 		Velocity = Orientation.RotateVector(Local);
 		// vertical: thrusters hold altitude (cancel gravity) and climb/descend with R/F
-		const double VzTarget = InVert * 45.0;
 		Velocity.Z += Clamp(VzTarget - Velocity.Z, -60 * Dt, 60 * Dt);
 	}
 	else
@@ -677,6 +758,7 @@ void AShipPawn::FlySurface(float Dt)
 		if (Vz > -10 && Vh < 18 && bFlat)
 		{
 			Mode = EFlightMode::Landed;
+			bAutopilot = false;
 			Velocity = FVector::ZeroVector;
 			AngVel = FVector::ZeroVector;
 			Throttle = 0;
@@ -1014,7 +1096,8 @@ void AShipPawn::Tick(float Dt)
 		LastThrottleInput = Time;
 	}
 	// autopilot: manual override disengages; otherwise it drives pitch/yaw/throttle
-	if (bAutopilot && Mode != EFlightMode::Docking && FMath::Abs(Stick.X) + FMath::Abs(Stick.Y) + FMath::Abs(InRoll) + FMath::Abs(InPitch) + FMath::Abs(InYaw) > 0.4)
+	const bool bSurfaceInput = Mode == EFlightMode::Surface && (InThrottle != 0 || InVert != 0 || InStrafe != 0);
+	if (bAutopilot && Mode != EFlightMode::Docking && (bSurfaceInput || FMath::Abs(Stick.X) + FMath::Abs(Stick.Y) + FMath::Abs(InRoll) + FMath::Abs(InPitch) + FMath::Abs(InYaw) > 0.4))
 	{
 		bAutopilot = false;
 		Msg(TEXT("Autopilot disengaged - manual override"));
