@@ -92,12 +92,12 @@ void AShipPawn::BeginPlay()
 	{
 		struct FLamp { FVector Pos; FRotator Rot; float Cd; float Inner; float Outer; FLinearColor Col; };
 		const FLamp Lamps[] = {
-			{ FVector(600, -220, -120), FRotator(-28, -8, 0), 90000.f, 22.f, 38.f, FLinearColor(0.85f, 0.92f, 1.f) },
-			{ FVector(600,  220, -120), FRotator(-28,  8, 0), 90000.f, 22.f, 38.f, FLinearColor(0.85f, 0.92f, 1.f) },
-			{ FVector(-200, -900, -150), FRotator(-70, -50, 0), 60000.f, 30.f, 50.f, FLinearColor(0.9f, 0.95f, 1.f) },
-			{ FVector(-200,  900, -150), FRotator(-70,  50, 0), 60000.f, 30.f, 50.f, FLinearColor(0.9f, 0.95f, 1.f) },
-			{ FVector(0, 0, -200), FRotator(-90, 0, 0), 40000.f, 45.f, 70.f, FLinearColor(1.f, 0.95f, 0.85f) },
-			{ FVector(-900, 0, -100), FRotator(-45, 180, 0), 30000.f, 30.f, 55.f, FLinearColor(1.f, 0.6f, 0.4f) },
+			{ FVector(600, -220, -120), FRotator(-28, -8, 0), 14000.f, 22.f, 38.f, FLinearColor(0.85f, 0.92f, 1.f) },
+			{ FVector(600,  220, -120), FRotator(-28,  8, 0), 14000.f, 22.f, 38.f, FLinearColor(0.85f, 0.92f, 1.f) },
+			{ FVector(-200, -900, -150), FRotator(-70, -50, 0), 9000.f, 30.f, 50.f, FLinearColor(0.9f, 0.95f, 1.f) },
+			{ FVector(-200,  900, -150), FRotator(-70,  50, 0), 9000.f, 30.f, 50.f, FLinearColor(0.9f, 0.95f, 1.f) },
+			{ FVector(0, 0, -200), FRotator(-90, 0, 0), 5000.f, 45.f, 70.f, FLinearColor(1.f, 0.95f, 0.85f) },
+			{ FVector(-900, 0, -100), FRotator(-45, 180, 0), 4000.f, 30.f, 55.f, FLinearColor(1.f, 0.6f, 0.4f) },
 		};
 		for (const FLamp& Lp : Lamps)
 		{
@@ -707,7 +707,7 @@ void AShipPawn::FlySurface(float Dt)
 		const double PitchCmd = Clamp((PitchWant - PitchNow) * 3.0, -0.6, 0.6);
 		Rotate(Dt, PitchCmd, Clamp(YawE * 2.5, -0.8, 0.8), Roll, FVector(0.7, 0.45, 1.4));
 		const double Facing = FMath::Cos(YawE);
-		FwdTarget = Dist > 25 ? Clamp(Dist / 9.0, 5.0, 95.0) * FMath::Max(0.0, Facing) : 0.0;
+		FwdTarget = Dist > 25 ? Clamp(Dist / 6.0, 8.0, 110.0) * FMath::Max(0.0, Facing) : 0.0;
 		Throttle = FwdTarget / (MaxSpeed * 0.8);
 		StrafeTarget = Dist < 60 ? Clamp(L.Y * Dist * 0.5, -8.0, 8.0) : 0.0;
 		// altitude: a glide slope down to the pad, never below 120 m over the ground 350 m ahead
@@ -717,7 +717,8 @@ void AShipPawn::FlySurface(float Dt)
 		double WantZ = PadZ + Clamp(Dist * 0.45, 0.0, 1400.0);
 		if (Dist > 40) WantZ = FMath::Max(WantZ, FMath::Max(GroundAhead + 120.0, GroundHere + 60.0));
 		else WantZ = PadZ; // settle
-		VzTarget = Clamp((WantZ - PosM.Z) * 0.6, Dist > 40 ? -30.0 : -5.0, 30.0);
+		const double Above = PosM.Z - PadZ;
+		VzTarget = Clamp((WantZ - PosM.Z) * 0.6, Dist > 40 ? -35.0 : (Above > 40 ? -12.0 : -4.5), 35.0);
 		if (Dist > 25 && Dist < 60 && FVector(Velocity.X, Velocity.Y, 0).Size() > 12) VzTarget = FMath::Max(VzTarget, 0.0); // bleed speed before settling
 	}
 	else
