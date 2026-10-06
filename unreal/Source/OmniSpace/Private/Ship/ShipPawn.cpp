@@ -975,7 +975,7 @@ void AShipPawn::FlySurface(float Dt)
 			if (Audio) Audio->Play(TEXT("dock_clunk"), 1.f);
 			if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode()))
 			{
-				const double Moved = GM->DeliverMaterials(Cargo, SurfacePos);
+				const double Moved = GM->DeliverMaterials(SurfacePos);
 				if (Moved > 0) Msg(FString::Printf(TEXT("Unloaded %.0f t to the construction sites"), Moved));
 			}
 		}
