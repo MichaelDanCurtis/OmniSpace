@@ -465,6 +465,27 @@ return Color * (0.8 + 0.4 * fres) + float3(0.5, 0.6, 0.7) * fres * 0.25;
     MEL.connect_material_property(spec, "", unreal.MaterialProperty.MP_SPECULAR)
 
 
+def sun_local_nodes(mat, x, y):
+    """SunL = normalize(SunPos - ObjectPos) in the primitive's local space; ViewL = camera vector in local space."""
+    sunpos = vec_param(mat, "SunPos", (1, 0, 0, 1), x, y)
+    op = MEL.create_material_expression(mat, unreal.MaterialExpressionObjectPositionWS, x, y + 150)
+    sub = MEL.create_material_expression(mat, unreal.MaterialExpressionSubtract, x + 200, y)
+    MEL.connect_material_expressions(sunpos, "", sub, "A")
+    MEL.connect_material_expressions(op, "", sub, "B")
+    norm = MEL.create_material_expression(mat, unreal.MaterialExpressionNormalize, x + 350, y)
+    MEL.connect_material_expressions(sub, "", norm, "")
+    tr = MEL.create_material_expression(mat, unreal.MaterialExpressionTransform, x + 500, y)
+    tr.set_editor_property("transform_source_type", unreal.MaterialVectorCoordTransformSource.TRANSFORMSOURCE_WORLD)
+    tr.set_editor_property("transform_type", unreal.MaterialVectorCoordTransform.TRANSFORM_LOCAL)
+    MEL.connect_material_expressions(norm, "", tr, "")
+    cam = MEL.create_material_expression(mat, unreal.MaterialExpressionCameraVectorWS, x, y + 300)
+    tr2 = MEL.create_material_expression(mat, unreal.MaterialExpressionTransform, x + 500, y + 300)
+    tr2.set_editor_property("transform_source_type", unreal.MaterialVectorCoordTransformSource.TRANSFORMSOURCE_WORLD)
+    tr2.set_editor_property("transform_type", unreal.MaterialVectorCoordTransform.TRANSFORM_LOCAL)
+    MEL.connect_material_expressions(cam, "", tr2, "")
+    return tr, tr2
+
+
 def build_rings(mat):
     color = vec_param(mat, "Color", (0.8, 0.78, 0.74, 1), -700, 0)
     opacity = scalar_param(mat, "Opacity", 0.7, -700, 150)
