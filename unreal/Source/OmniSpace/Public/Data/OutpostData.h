@@ -5,18 +5,18 @@
 #include "CoreMinimal.h"
 #include "OutpostData.generated.h"
 
-/** Construction materials, in tons. Also the ship's cargo for the first pass of the economy. */
+/** Construction materials, in tons: the market commodities metals, machinery and electronics. */
 USTRUCT(BlueprintType)
 struct FMaterials
 {
 	GENERATED_BODY()
-	UPROPERTY(BlueprintReadOnly) double Alloy = 0;       // structural alloy
-	UPROPERTY(BlueprintReadOnly) double Composites = 0;  // hull composites, glazing
-	UPROPERTY(BlueprintReadOnly) double Electronics = 0; // power, life support, computers
+	UPROPERTY(BlueprintReadOnly) double Metals = 0;      // "metals": frames, hull plate
+	UPROPERTY(BlueprintReadOnly) double Machinery = 0;   // "machinery": pumps, drives, airlocks
+	UPROPERTY(BlueprintReadOnly) double Electronics = 0; // "electronics": power, life support, computers
 
-	double Total() const { return Alloy + Composites + Electronics; }
-	bool Covers(const FMaterials& Need) const { return Alloy >= Need.Alloy - 1e-6 && Composites >= Need.Composites - 1e-6 && Electronics >= Need.Electronics - 1e-6; }
-	FMaterials Minus(const FMaterials& O) const { FMaterials R; R.Alloy = FMath::Max(0.0, Alloy - O.Alloy); R.Composites = FMath::Max(0.0, Composites - O.Composites); R.Electronics = FMath::Max(0.0, Electronics - O.Electronics); return R; }
+	double Total() const { return Metals + Machinery + Electronics; }
+	bool Covers(const FMaterials& Need) const { return Metals >= Need.Metals - 1e-6 && Machinery >= Need.Machinery - 1e-6 && Electronics >= Need.Electronics - 1e-6; }
+	FMaterials Minus(const FMaterials& O) const { FMaterials R; R.Metals = FMath::Max(0.0, Metals - O.Metals); R.Machinery = FMath::Max(0.0, Machinery - O.Machinery); R.Electronics = FMath::Max(0.0, Electronics - O.Electronics); return R; }
 };
 
 UENUM(BlueprintType)

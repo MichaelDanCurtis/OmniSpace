@@ -3,6 +3,7 @@
 #include "Ship/ShipAudio.h"
 #include "World/SurfaceTile.h"
 #include "Core/OmniGameMode.h"
+#include "Core/CommanderSubsystem.h"
 #include "Galaxy/GalaxySubsystem.h"
 #include "World/OmniAssets.h"
 #include "Components/StaticMeshComponent.h"
@@ -59,6 +60,7 @@ void AShipPawn::BeginPlay()
 {
 	Super::BeginPlay();
 	Orientation = GetActorQuat();
+	if (UCommanderSubsystem* Co = Cmdr()) { Fuel = FMath::Clamp(Co->S.Fuel, 0.0, 16.0); Hull = FMath::Clamp(Co->S.Hull, 0.05, 1.0); }
 	OmniCockpit::Build(this, Root);
 	Audio = NewObject<UShipAudio>(this);
 	Audio->Init(this);
@@ -170,6 +172,11 @@ void AShipPawn::SetupPlayerInputComponent(UInputComponent* IC)
 	IC->BindKey(EKeys::L, IE_Pressed, this, &AShipPawn::OnDock);
 	IC->BindKey(EKeys::T, IE_Pressed, this, &AShipPawn::OnCycleTarget);
 	IC->BindKey(EKeys::LeftMouseButton, IE_Pressed, this, &AShipPawn::OnMouseLock);
+	IC->BindKey(EKeys::I, IE_Pressed, this, &AShipPawn::OnToggleSystemMap);
+	IC->BindKey(EKeys::F1, IE_Pressed, this, &AShipPawn::OnToggleHelp);
+	IC->BindKey(EKeys::Slash, IE_Pressed, this, &AShipPawn::OnToggleHelp);
+	IC->BindKey(EKeys::MouseScrollUp, IE_Pressed, this, &AShipPawn::OnMapZoomIn);
+	IC->BindKey(EKeys::MouseScrollDown, IE_Pressed, this, &AShipPawn::OnMapZoomOut);
 	IC->BindKey(EKeys::P, IE_Pressed, this, &AShipPawn::OnToggleAutopilot);
 	IC->BindKey(EKeys::N, IE_Pressed, this, &AShipPawn::OnCycleJump);
 	IC->BindKey(EKeys::G, IE_Pressed, this, &AShipPawn::OnRover);
@@ -185,6 +192,11 @@ void AShipPawn::SetupPlayerInputComponent(UInputComponent* IC)
 	IC->BindKey(EKeys::Four, IE_Pressed, this, &AShipPawn::OnBuildSlot4);
 	IC->BindKey(EKeys::Five, IE_Pressed, this, &AShipPawn::OnBuildSlot5);
 	IC->BindKey(EKeys::Six, IE_Pressed, this, &AShipPawn::OnBuildSlot6);
+	IC->BindKey(EKeys::Up, IE_Pressed, this, &AShipPawn::OnMenuUp);
+	IC->BindKey(EKeys::Down, IE_Pressed, this, &AShipPawn::OnMenuDown);
+	IC->BindKey(EKeys::Right, IE_Pressed, this, &AShipPawn::OnMenuRight);
+	IC->BindKey(EKeys::Left, IE_Pressed, this, &AShipPawn::OnMenuLeft);
+	IC->BindKey(EKeys::BackSpace, IE_Pressed, this, &AShipPawn::OnMenuBack);
 	IC->BindKey(EKeys::B, IE_Pressed, this, &AShipPawn::OnCycleFar);
 	IC->BindKey(EKeys::M, IE_Pressed, this, &AShipPawn::OnToggleMap);
 	IC->BindKey(EKeys::Seven, IE_Pressed, this, &AShipPawn::OnDebugSky);
@@ -205,11 +217,53 @@ void AShipPawn::OnMouseY(float V)
 }
 void AShipPawn::OnMouseLock()
 {
+	if (bShowMap || bShowSystemMap) { MapSelectHovered(); return; }
 	if (APlayerController* PC = Cast<APlayerController>(GetController()))
 	{
 		FInputModeGameOnly M;
 		PC->SetInputMode(M);
 		PC->bShowMouseCursor = false;
+	}
+}
+
+void AShipPawn::SetMapOpen(bool bGalaxy, bool bSystem)
+{
+	bShowMap = bGalaxy;
+	bShowSystemMap = bSystem;
+	Stick = FVector2D::ZeroVector;
+	if (APlayerController* PC = Cast<APlayerController>(GetController()))
+	{
+		const bool bOpen = bGalaxy || bSystem;
+		PC->bShowMouseCursor = bOpen;
+		if (bOpen)
+		{
+			FInputModeGameAndUI M;
+			M.SetHideCursorDuringCapture(false);
+			M.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+			PC->SetInputMode(M);
+		}
+		else { FInputModeGameOnly M; PC->SetInputMode(M); }
+	}
+	if (Audio) Audio->Play(TEXT("blip"), 0.4f);
+}
+
+void AShipPawn::MapSelectHovered()
+{
+	AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode());
+	UGalaxySubsystem* Galaxy = GetGameInstance()->GetSubsystem<UGalaxySubsystem>();
+	if (bShowMap && !MapHoverId.IsEmpty() && GM && Galaxy)
+	{
+		MapSelectedId = MapHoverId;
+		FStarDescriptor S;
+		if (Galaxy->GetStar(MapSelectedId, S))
+		{
+			const double D = FVector::Dist(S.Pos, GM->CurrentStar.Pos);
+			Msg(FString::Printf(TEXT("%s  %.1f ly  %s  -  N sets it as the jump target, B plots a route"), *S.Name, D, *UGalaxySubsystem::ClassLabel(S.Cls)));
+		}
+	}
+	else if (bShowSystemMap && !SysMapHoverId.IsEmpty())
+	{
+		SetTarget(SysMapHoverId);
 	}
 }
 void AShipPawn::OnFullStop() { Throttle = 0; LastThrottleInput = Time; }
@@ -457,6 +511,22 @@ void AShipPawn::CycleJumpTarget()
 	UGalaxySubsystem* Galaxy = GetGameInstance()->GetSubsystem<UGalaxySubsystem>();
 	if (!GM || !Galaxy) return;
 	const FStarDescriptor& Cur = GM->CurrentStar;
+	// a star picked on the map: jump straight to it if in range, else plot the route there
+	if (bShowMap && !MapSelectedId.IsEmpty() && MapSelectedId != Cur.Id)
+	{
+		FStarDescriptor Sel;
+		if (Galaxy->GetStar(MapSelectedId, Sel))
+		{
+			if (FVector::Dist(Sel.Pos, Cur.Pos) <= JumpRangeLy)
+			{
+				JumpTargetId = Sel.Id; JumpTarget = Sel; Route.Reset(); RouteDestId.Empty(); TargetId.Empty();
+				Msg(FString::Printf(TEXT("Jump target: %s  %.1f ly  (%s)"), *Sel.Name, FVector::Dist(Sel.Pos, Cur.Pos), *UGalaxySubsystem::ClassLabel(Sel.Cls)));
+				GM->PrefetchJump(Sel);
+			}
+			else PlotRouteTo(Sel.Id);
+			return;
+		}
+	}
 	TArray<FStarDescriptor> Near = Galaxy->StarsNear(Cur.Pos, JumpRangeLy);
 	Near.RemoveAll([&](const FStarDescriptor& S) { return S.Id == Cur.Id; });
 	if (Near.Num() == 0) { Msg(TEXT("No stars within jump range")); return; }
@@ -476,6 +546,7 @@ void AShipPawn::CycleFarTarget()
 	AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode());
 	UGalaxySubsystem* Galaxy = GetGameInstance()->GetSubsystem<UGalaxySubsystem>();
 	if (!GM || !Galaxy) return;
+	if (bShowMap && !MapSelectedId.IsEmpty() && MapSelectedId != GM->CurrentStar.Id) { PlotRouteTo(MapSelectedId); return; }
 	const FStarDescriptor& Cur = GM->CurrentStar;
 	TArray<FStarDescriptor> Far = Galaxy->StarsNear(Cur.Pos, 60.0);
 	Far.RemoveAll([&](const FStarDescriptor& S) { return S.Id == Cur.Id || FVector::Dist(S.Pos, Cur.Pos) <= JumpRangeLy; });
@@ -488,9 +559,19 @@ void AShipPawn::CycleFarTarget()
 	});
 	if (Far.Num() > 12) Far.SetNum(12);
 	int32 I = Far.IndexOfByPredicate([&](const FStarDescriptor& S) { return S.Id == RouteDestId; });
-	const FStarDescriptor& Dest = Far[(I + 1) % Far.Num()];
+	PlotRouteTo(Far[(I + 1) % Far.Num()].Id);
+}
+
+bool AShipPawn::PlotRouteTo(const FString& DestId)
+{
+	AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode());
+	UGalaxySubsystem* Galaxy = GetGameInstance()->GetSubsystem<UGalaxySubsystem>();
+	if (!GM || !Galaxy) return false;
+	const FStarDescriptor& Cur = GM->CurrentStar;
+	FStarDescriptor Dest;
+	if (!Galaxy->GetStar(DestId, Dest) || Dest.Id == Cur.Id) return false;
 	TArray<FString> Plotted = Galaxy->PlotRoute(Cur.Id, Dest.Id, JumpRangeLy);
-	if (Plotted.Num() < 2) { Msg(FString::Printf(TEXT("No route to %s within jump range"), *Dest.Name)); if (Audio) Audio->Play(TEXT("deny")); return; }
+	if (Plotted.Num() < 2) { Msg(FString::Printf(TEXT("No route to %s within jump range"), *Dest.Name)); if (Audio) Audio->Play(TEXT("deny")); return false; }
 	Route = Plotted;
 	Route.RemoveAt(0); // first entry is where we are
 	RouteDestId = Dest.Id;
@@ -504,6 +585,7 @@ void AShipPawn::CycleFarTarget()
 	}
 	Msg(FString::Printf(TEXT("Route plotted: %s  %.1f ly  -  %d jumps  (first hop %s)"), *Dest.Name, FVector::Dist(Dest.Pos, Cur.Pos), Route.Num(), *Next.Name));
 	if (Audio) Audio->Play(TEXT("chime"), 0.6f);
+	return true;
 }
 
 void AShipPawn::AdvanceRoute()
@@ -624,37 +706,116 @@ void AShipPawn::SetLandingLights(bool bOn, bool bAnnounce)
 void AShipPawn::OnLoadCargo()
 {
 	AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode());
-	if (Mode == EFlightMode::Docked)
+	UCommanderSubsystem* Co = Cmdr();
+	if (Mode == EFlightMode::Docked && Co && Director)
 	{
-		// the station's yard fills the hold with a standard construction load
-		const double Room = FMath::Max(0.0, CargoCapacity - Cargo.Total());
-		if (Room < 0.5) { Msg(TEXT("Hold is full")); return; }
-		Cargo.Alloy += Room * 0.5; Cargo.Composites += Room * 0.25; Cargo.Electronics += Room * 0.25;
-		Msg(FString::Printf(TEXT("Construction materials loaded: %.0f t alloy, %.0f t composites, %.0f t electronics aboard"), Cargo.Alloy, Cargo.Composites, Cargo.Electronics));
+		// a quick construction load: metals, machinery and electronics in the proportions an outpost
+		// burns through, as far as the hold and the credits allow
+		const FStationData* St = Director->GetSystem().FindStation(DockingStationId);
+		if (!St) return;
+		FString M1 = Co->Buy(*St, TEXT("metals"), 10), M2 = Co->Buy(*St, TEXT("machinery"), 6), M3 = Co->Buy(*St, TEXT("electronics"), 4);
+		Msg(M1); Msg(M2); Msg(M3);
 		if (Audio) Audio->Play(TEXT("chime"), 0.6f);
 		return;
 	}
 	if (Mode == EFlightMode::Landed && GM)
 	{
-		const double Moved = GM->DeliverMaterials(Cargo, GetActorLocation());
+		const double Moved = GM->DeliverMaterials(GetActorLocation());
 		if (Moved > 0) { Msg(FString::Printf(TEXT("Unloaded %.0f t to the construction sites"), Moved)); if (Audio) Audio->Play(TEXT("dock_clunk"), 0.6f); }
-		else if (Cargo.Total() < 0.01) Msg(TEXT("Nothing in the hold - load materials at a station (U when docked)"));
+		else if (Co && Co->CargoTons() < 0.01) Msg(TEXT("Nothing in the hold - buy metals, machinery and electronics at a station"));
 		else Msg(TEXT("No site within range needs materials - land within 160 m of the outpost beacon"));
 		return;
 	}
-	Msg(TEXT("Dock at a station to load materials, land at an outpost to unload"));
+	Msg(TEXT("Dock at a station to buy materials (U or the Commodities tab), land at an outpost to unload"));
+}
+
+UCommanderSubsystem* AShipPawn::Cmdr() const
+{
+	return GetGameInstance() ? GetGameInstance()->GetSubsystem<UCommanderSubsystem>() : nullptr;
+}
+
+void AShipPawn::MenuTabSet(int32 Tab)
+{
+	if (Mode != EFlightMode::Docked) return;
+	bStationMenu = true;
+	MenuTab = FMath::Clamp(Tab, 0, 4);
+	MenuRow = 0;
+	MenuNote.Empty();
+	if (Audio) Audio->Play(TEXT("blip"), 0.4f);
+}
+
+void AShipPawn::MenuMove(int32 Dir)
+{
+	if (Mode != EFlightMode::Docked || !bStationMenu) return;
+	UCommanderSubsystem* Co = Cmdr();
+	int32 Rows = 1;
+	if (MenuTab == 1) Rows = UCommanderSubsystem::Commodities().Num();
+	else if (MenuTab == 2 && Co && Director) { const FStationData* St = Director->GetSystem().FindStation(DockingStationId); Rows = Co->S.Contracts.Num() + (St ? Co->MissionBoard(*St, Director->GetSystem(), UCommanderSubsystem::Day()).Num() : 0); }
+	else if (MenuTab == 3) Rows = 2;
+	MenuRow = (MenuRow + Dir + Rows) % FMath::Max(1, Rows);
+}
+
+void AShipPawn::MenuAction(int32 Which)
+{
+	if (Mode != EFlightMode::Docked || !Director) return;
+	UCommanderSubsystem* Co = Cmdr();
+	const FStationData* St = Director->GetSystem().FindStation(DockingStationId);
+	if (!Co || !St) return;
+	if (!bStationMenu) { bStationMenu = true; return; }
+	FString Note;
+	switch (MenuTab)
+	{
+	case 1:
+	{
+		const TArray<FCommodityDef>& Cs = UCommanderSubsystem::Commodities();
+		if (!Cs.IsValidIndex(MenuRow)) break;
+		const FString Id = Cs[MenuRow].Id;
+		if (Which == 0) Note = Co->Buy(*St, Id, 1);
+		else if (Which == 2) Note = Co->Buy(*St, Id, 8);
+		else if (Which == 1) Note = Co->Sell(*St, Id, 1);
+		else if (Which == 3) Note = Co->Sell(*St, Id, 999);
+		break;
+	}
+	case 2:
+	{
+		const int32 NActive = Co->S.Contracts.Num();
+		if (MenuRow < NActive) { if (Which == 1) Note = Co->Abandon(Co->S.Contracts[MenuRow].Id); else Note = TEXT("Backspace abandons a contract (10% fee)"); }
+		else
+		{
+			TArray<FContract> Board = Co->MissionBoard(*St, Director->GetSystem(), UCommanderSubsystem::Day());
+			const int32 K = MenuRow - NActive;
+			if (Board.IsValidIndex(K) && Which == 0)
+			{
+				Note = Co->Accept(Board[K]);
+				// a contract to another system plots the route there
+				if (Board[K].DestSystem != Director->GetSystem().Id && Note.StartsWith(TEXT("Contract accepted"))) PlotRouteTo(Board[K].DestSystem);
+			}
+		}
+		break;
+	}
+	case 3:
+		if (Which == 0 || Which == 2) Note = MenuRow == 0 ? Co->Refuel(Fuel, 16.0) : Co->Repair(Hull);
+		break;
+	case 4:
+		if (Which == 0 || Which == 2) Note = Co->SellData();
+		break;
+	default:
+		break;
+	}
+	if (!Note.IsEmpty()) { MenuNote = Note; Msg(Note); if (Audio) Audio->Play(Note.Contains(TEXT("not")) || Note.Contains(TEXT("No ")) || Note.Contains(TEXT("full")) ? TEXT("deny") : TEXT("blip"), 0.5f); }
 }
 
 void AShipPawn::OnBuildToggle() { if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode())) GM->ToggleBuildMode(); }
-void AShipPawn::OnBuildPlace() { if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode())) GM->BuildPlace(); }
+void AShipPawn::OnBuildPlace() { if (Mode == EFlightMode::Docked) { MenuAction(0); return; } if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode())) GM->BuildPlace(); }
+void AShipPawn::OnMenuEnter() { MenuAction(0); }
 void AShipPawn::OnBuildRotL() { if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode())) GM->BuildRotate(-1); }
 void AShipPawn::OnBuildRotR() { if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode())) GM->BuildRotate(1); }
-void AShipPawn::OnBuildSlot1() { if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode())) GM->BuildSelect(1); }
-void AShipPawn::OnBuildSlot2() { if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode())) GM->BuildSelect(2); }
-void AShipPawn::OnBuildSlot3() { if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode())) GM->BuildSelect(3); }
-void AShipPawn::OnBuildSlot4() { if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode())) GM->BuildSelect(4); }
-void AShipPawn::OnBuildSlot5() { if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode())) GM->BuildSelect(5); }
-void AShipPawn::OnBuildSlot6() { if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode())) GM->BuildSelect(6); }
+void AShipPawn::OnBuildSlot1() { if (Mode == EFlightMode::Docked) { MenuTabSet(0); return; } if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode())) GM->BuildSelect(1); }
+void AShipPawn::OnBuildSlot2() { if (Mode == EFlightMode::Docked) { MenuTabSet(1); return; } if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode())) GM->BuildSelect(2); }
+void AShipPawn::OnBuildSlot3() { if (Mode == EFlightMode::Docked) { MenuTabSet(2); return; } if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode())) GM->BuildSelect(3); }
+void AShipPawn::OnBuildSlot4() { if (Mode == EFlightMode::Docked) { MenuTabSet(3); return; } if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode())) GM->BuildSelect(4); }
+void AShipPawn::OnBuildSlot5() { if (Mode == EFlightMode::Docked) { MenuTabSet(4); return; } if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode())) GM->BuildSelect(5); }
+void AShipPawn::OnBuildSlot6() { if (Mode == EFlightMode::Docked) { MenuTabSet(5); return; } if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode())) GM->BuildSelect(6); }
 
 void AShipPawn::OnRover()
 {
@@ -866,6 +1027,17 @@ void AShipPawn::DockAt(const FString& StationId, int32 Bay)
 	DockingStationId = StationId;
 	DockingBay = Bay;
 	Msg(TEXT("Docked. Press L to launch."));
+	bStationMenu = true; MenuTab = 0; MenuRow = 0; MenuNote.Empty();
+	if (UCommanderSubsystem* Co = Cmdr())
+	{
+		if (Director)
+		{
+			for (const FString& T : Co->CompleteContracts(StationId, Director->GetSystem().Id)) { Msg(T); if (Audio) Audio->Play(TEXT("chime"), 0.7f); }
+			if (!Co->S.bStarterGrant && StationId == TEXT("tanara-station")) { Co->S.bStarterGrant = true; Co->S.Credits += 1000; Msg(TEXT("Nexus Astra Combine starter grant: +1,000 CR")); }
+		}
+		Co->S.DockedAt = StationId; Co->S.LastStation = StationId; Co->S.Fuel = Fuel; Co->S.Hull = Hull;
+		Co->Save();
+	}
 }
 
 void AShipPawn::Launch()
@@ -873,6 +1045,8 @@ void AShipPawn::Launch()
 	if (Mode != EFlightMode::Docked) return;
 	Mode = EFlightMode::Launching;
 	LaunchTime = 0;
+	bStationMenu = false;
+	if (UCommanderSubsystem* Co = Cmdr()) { Co->S.DockedAt.Empty(); Co->S.Fuel = Fuel; Co->S.Hull = Hull; Co->Save(); }
 	Msg(TEXT("Launching"));
 }
 
@@ -1044,7 +1218,7 @@ void AShipPawn::FlySupercruise(float Dt)
 		FVector P; double R;
 		if (!Director->GetEntityPos(Id, P, R) || R < 5000) continue;
 		double D = FVector::Dist(P, Ship) - R;
-		double Well = SupercruiseMin + FMath::Max(0.0, D) * (0.3 + 0.5 * FMath::Min(1.0, 6e6 / R));
+		double Well = SupercruiseMin + FMath::Max(0.0, D - R * 0.3) * (0.3 + 0.5 * FMath::Min(1.0, 6e6 / R)); // down to cruising speed inside a third of a radius
 		Cap = FMath::Min(Cap, Well);
 	}
 	// approach cap toward the target
@@ -1070,13 +1244,18 @@ void AShipPawn::FlySupercruise(float Dt)
 	if (bTargetStation && TargetDist < 60000.0) DropFromSupercruise(true);
 	// emergency drop near a body
 	FVector NP; double NR;
-	if (!NearId.IsEmpty() && Director->GetEntityPos(NearId, NP, NR) && NearD < FMath::Max(NR * 0.04, 30000.0))
+	// a planet or moon ahead pulls the ship out of supercruise before it can be hit: a clean
+	// proximity drop at cruising speed, an emergency drop (damage) only when still going fast.
+	if (!NearId.IsEmpty() && Director->GetEntityPos(NearId, NP, NR) && NearD < FMath::Max(NR * 0.2, 80000.0))
 	{
-		Msg(FString::Printf(TEXT("Emergency drop! Too close to %s"), *NearId));
-		Damage(0.12);
+		const bool bHard = SupercruiseSpeed > SupercruiseMin * 4.0;
+		Msg(bHard ? FString::Printf(TEXT("Emergency drop! Too close to %s"), *Director->GetEntityName(NearId)) : FString::Printf(TEXT("Dropped from supercruise - %s ahead"), *Director->GetEntityName(NearId)));
+		if (bHard) Damage(0.12);
 		DropFromSupercruise(true);
 		FVector N = (Director->GetShipUniversePos() - NP).GetSafeNormal();
-		Director->SetShipUniversePos(NP + N * (NR + FMath::Max(NR * 0.05, 40000.0)));
+		Director->SetShipUniversePos(NP + N * (NR + FMath::Max(NR * 0.22, 90000.0)));
+		Velocity = Orientation.GetForwardVector() * 200.0;
+		Throttle = 0.3;
 	}
 	// heat near the star
 	double StarR = Director->GetSystem().Star.RadiusSolar * 695700000.0;
@@ -1244,6 +1423,30 @@ void AShipPawn::Tick(float Dt)
 	default: break;
 	}
 	if (Time - LastHit > 4) Shields = FMath::Min(1.0, Shields + Dt * 0.04);
+	if (UCommanderSubsystem* Co = Cmdr())
+	{
+		JumpRangeLy = Co->JumpRangeLy(Fuel);
+		// surface scans: pass within five radii of a body and the survey computer logs it
+		ScanTimer += Dt;
+		if (ScanTimer > 1.0 && (Mode == EFlightMode::Normal || Mode == EFlightMode::Supercruise))
+		{
+			ScanTimer = 0;
+			const FStarSystemData& Sys = Director->GetSystem();
+			const FVector ShipU = Director->GetShipUniversePos();
+			for (const FBodyData& B : Sys.Bodies)
+			{
+				FVector BP; double BR;
+				if (Co->IsScanned(Sys.Id, B.Id) || !Director->GetEntityPos(B.Id, BP, BR)) continue;
+				if (FVector::Dist(BP, ShipU) < BR * 5.0)
+				{
+					const int32 V = Co->ScanBody(Sys, B, B.Kind == TEXT("moon"));
+					if (V > 0) { Msg(FString::Printf(TEXT("Surface scan complete: %s  (+%d CR of data)"), *B.Name, V)); if (Audio) Audio->Play(TEXT("blip"), 0.5f); }
+				}
+			}
+		}
+		static double SaveT = 0; SaveT += Dt;
+		if (SaveT > 10.0) { SaveT = 0; Co->S.Fuel = Fuel; Co->S.Hull = Hull; Co->Save(); }
+	}
 	if (Mode == EFlightMode::Landed)
 		if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode()))
 			if (GM->bBuildMode) GM->UpdateBuildGhost(GetActorLocation(), Orientation.GetForwardVector());

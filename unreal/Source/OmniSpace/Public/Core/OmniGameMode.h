@@ -82,8 +82,8 @@ public:
 	void BuildPlace();
 	/** Pawn tick: aim the ghost ahead of the pawn (world cm) and validate it. */
 	void UpdateBuildGhost(const FVector& PawnPosCm, const FVector& Facing);
-	/** Unload construction materials from a hold into the outpost's sites; returns tons delivered. */
-	double DeliverMaterials(FMaterials& Hold, const FVector& ShipPosCm);
+	/** Unload metals/machinery/electronics from the ship's cargo into the outpost's sites; returns tons delivered. */
+	double DeliverMaterials(const FVector& ShipPosCm);
 	FOutpostData* CurrentOutpostData() { return Outposts.IsValidIndex(CurrentOutpost) ? &Outposts[CurrentOutpost] : nullptr; }
 	void SaveOutposts();
 	void LoadOutposts();

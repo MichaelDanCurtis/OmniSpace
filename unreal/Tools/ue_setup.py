@@ -144,6 +144,18 @@ if (RingOpacity > 0.001) {
     }
   }
 }
+// night side: the sun lights nothing there, so without this the dark limb reads as a hole in
+// the sky. Starlight and planetshine give it a faint body; inhabited worlds get city lights.
+float ndl = dot(p, normalize(SunL));
+float night = smoothstep(0.12, -0.12, ndl);
+emis += col * 0.012 * night;
+if (t == 5 || t == 6) {
+  float3 cq = sp * 9.0;
+  float towns = pow(saturate(fbm(cq, 4) * 0.5 + 0.5), 6.0) * pow(saturate(snoise(cq * 4.0) * 0.5 + 0.5), 3.0);
+  float land = (t == 5) ? step(0.22, fbm(sp * 1.7, 7)) : 1.0;
+  emis += float3(1.0, 0.75, 0.4) * towns * land * 0.9 * night * (1.0 - smoothstep(0.78, 0.86, abs(p.z)));
+}
+Day = saturate(ndl * 2.5 + 0.35);
 Spec = spec;
 Emissive = emis;
 return col;
@@ -151,7 +163,7 @@ return col;
     # The Custom node returns the base colour and writes Spec/Emissive via extra outputs
     node = custom(mat, code, ["LocalPos", "C0", "C1", "C2", "Type", "Bands", "Seed", "Clouds", "RingIn", "RingOut", "RingSeed", "RingOpacity", "SunL"], -300, 0)
     outs = []
-    for name, typ_ in (("Spec", unreal.CustomMaterialOutputType.CMOT_FLOAT1), ("Emissive", unreal.CustomMaterialOutputType.CMOT_FLOAT3)):
+    for name, typ_ in (("Spec", unreal.CustomMaterialOutputType.CMOT_FLOAT1), ("Emissive", unreal.CustomMaterialOutputType.CMOT_FLOAT3), ("Day", unreal.CustomMaterialOutputType.CMOT_FLOAT1)):
         o = unreal.CustomOutput()
         o.set_editor_property("output_name", name)
         o.set_editor_property("output_type", typ_)
@@ -178,9 +190,13 @@ return col;
     MEL.connect_material_expressions(atmo, "", mul, "B")
     MEL.connect_material_expressions(mul, "", mul2, "A")
     MEL.connect_material_expressions(has_atmo, "", mul2, "B")
+    # the atmosphere rim only glows where the sun reaches it
+    mul3 = MEL.create_material_expression(mat, unreal.MaterialExpressionMultiply, 120, 650)
+    MEL.connect_material_expressions(mul2, "", mul3, "A")
+    MEL.connect_material_expressions(node, "Day", mul3, "B")
     add = MEL.create_material_expression(mat, unreal.MaterialExpressionAdd, 200, 500)
     MEL.connect_material_expressions(node, "Emissive", add, "A")
-    MEL.connect_material_expressions(mul2, "", add, "B")
+    MEL.connect_material_expressions(mul3, "", add, "B")
     MEL.connect_material_property(add, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
     mat.set_editor_property("two_sided", False)
 

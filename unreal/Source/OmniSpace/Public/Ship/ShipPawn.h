@@ -50,8 +50,16 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Ship") double Shields = 1;
 	UPROPERTY(BlueprintReadOnly, Category = "Ship") double Hull = 1;
 	UPROPERTY(BlueprintReadOnly, Category = "Ship") double Fuel = 16;
-	UPROPERTY(BlueprintReadOnly, Category = "Ship") FMaterials Cargo;       // construction materials aboard (t)
-	UPROPERTY(BlueprintReadOnly, Category = "Ship") double CargoCapacity = 32;
+	// station menu (docked): tab 0 concourse, 1 commodities, 2 contracts, 3 refuel & repair, 4 cartographics
+	UPROPERTY(BlueprintReadOnly, Category = "Ship") bool bStationMenu = false;
+	UPROPERTY(BlueprintReadOnly, Category = "Ship") int32 MenuTab = 0;
+	UPROPERTY(BlueprintReadOnly, Category = "Ship") int32 MenuRow = 0;
+	UPROPERTY(BlueprintReadOnly, Category = "Ship") FString MenuNote;
+	class UCommanderSubsystem* Cmdr() const;
+	void MenuAction(int32 Which); // 0 Enter, 1 Backspace, 2 Right, 3 Left
+	void MenuMove(int32 Dir);
+	void MenuTabSet(int32 Tab);
+	double ScanTimer = 0;
 	UPROPERTY(BlueprintReadOnly, Category = "Ship") double Heat = 0.2;
 	UPROPERTY(BlueprintReadOnly, Category = "Ship") EFsdKind FsdKind = EFsdKind::None;
 	UPROPERTY(BlueprintReadOnly, Category = "Ship") double FsdProgress = 0;
@@ -69,6 +77,18 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Ship") TArray<FString> Route;
 	UPROPERTY(BlueprintReadOnly, Category = "Ship") FString RouteDestId;
 	UPROPERTY(BlueprintReadOnly, Category = "Ship") bool bShowMap = false;
+	UPROPERTY(BlueprintReadOnly, Category = "Ship") bool bShowSystemMap = false;
+	UPROPERTY(BlueprintReadOnly, Category = "Ship") FString MapSelectedId;   // galaxy map: selected star
+	UPROPERTY(BlueprintReadOnly, Category = "Ship") FString MapHoverId;      // galaxy map: star under the cursor (set by the HUD)
+	UPROPERTY(BlueprintReadOnly, Category = "Ship") FString SysMapHoverId;   // system map: entity under the cursor
+	UPROPERTY(BlueprintReadOnly, Category = "Ship") double MapRangeLy = 42.0;
+	UPROPERTY(BlueprintReadOnly, Category = "Ship") bool bShowHelp = false;
+	void OnToggleHelp() { bShowHelp = !bShowHelp; }
+	void SetMapOpen(bool bGalaxy, bool bSystem);
+	void MapSelectHovered();
+	void OnToggleSystemMap() { SetMapOpen(false, !bShowSystemMap); }
+	void OnMapZoomIn() { if (bShowMap) MapRangeLy = FMath::Max(10.0, MapRangeLy * 0.8); }
+	void OnMapZoomOut() { if (bShowMap) MapRangeLy = FMath::Min(120.0, MapRangeLy * 1.25); }
 	UPROPERTY(BlueprintReadOnly, Category = "Ship") double LastImpactTime = -100;
 	UPROPERTY() TObjectPtr<class UShipAudio> Audio;
 	/** Landing tile we are flying over (set by the game mode while on the surface). */
@@ -97,6 +117,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Ship") void CycleJumpTarget();
 	/** Cycle through stars beyond jump range (up to 60 ly) and plot a multi-jump route. */
 	UFUNCTION(BlueprintCallable, Category = "Ship") void CycleFarTarget();
+	bool PlotRouteTo(const FString& DestId);
 	/** Called on arrival: advance the route to its next hop. */
 	void AdvanceRoute();
 	UFUNCTION(BlueprintCallable, Category = "Ship") bool EngageJump();
@@ -164,12 +185,18 @@ protected:
 	void OnBuildRotL();
 	void OnBuildRotR();
 	void OnBuildSlot1(); void OnBuildSlot2(); void OnBuildSlot3(); void OnBuildSlot4(); void OnBuildSlot5(); void OnBuildSlot6();
+	void OnMenuUp() { MenuMove(-1); }
+	void OnMenuDown() { MenuMove(1); }
+	void OnMenuEnter();
+	void OnMenuBack() { MenuAction(1); }
+	void OnMenuRight() { MenuAction(2); }
+	void OnMenuLeft() { MenuAction(3); }
 	void OnCycleTarget() { CycleTarget(); }
 	void OnMouseLock();
 	void OnToggleAutopilot() { ToggleAutopilot(); }
 	void OnCycleJump() { CycleJumpTarget(); }
 	void OnCycleFar() { CycleFarTarget(); }
-	void OnToggleMap() { bShowMap = !bShowMap; }
+	void OnToggleMap() { SetMapOpen(!bShowMap, false); }
 	void OnDebugSky();
 	void OnDebugStar();
 	void OnDebugBodies();

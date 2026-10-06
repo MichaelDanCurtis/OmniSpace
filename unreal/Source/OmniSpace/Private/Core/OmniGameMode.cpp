@@ -3,6 +3,7 @@
 #include "Ship/ShipPawn.h"
 #include "Ship/RoverPawn.h"
 #include "Ship/ShipAudio.h"
+#include "Core/CommanderSubsystem.h"
 #include "World/SurfaceTile.h"
 #include "World/OutpostActor.h"
 #include "JsonObjectConverter.h"
@@ -61,7 +62,9 @@ void AOmniGameMode::BeginPlay()
 	Forge->OnSystemLoaded.AddDynamic(this, &AOmniGameMode::OnSystemLoaded);
 	Forge->OnLog.AddDynamic(this, &AOmniGameMode::OnForgeLog);
 	Forge->OnSystemDressed.AddDynamic(this, &AOmniGameMode::OnSystemDressed);
-	FString StartId = TEXT("kelvar");
+	UCommanderSubsystem* Cmdr = GI->GetSubsystem<UCommanderSubsystem>();
+	if (Cmdr) Commander = Cmdr->S.Commander;
+	FString StartId = Cmdr && !Cmdr->S.SystemId.IsEmpty() ? Cmdr->S.SystemId : TEXT("kelvar");
 	FParse::Value(FCommandLine::Get(), TEXT("StartSystem="), StartId);
 	FStarDescriptor Star;
 	if (!Galaxy->GetStar(StartId, Star)) Galaxy->GetStar(TEXT("kelvar"), Star);
@@ -159,7 +162,22 @@ void AOmniGameMode::EnterSystem(const FStarSystemData& System, bool bArrivingFro
 	Director->LoadSystem(System);
 	AShipPawn* Ship = Cast<AShipPawn>(UGameplayStatics::GetPlayerPawn(GetWorld(), 0));
 	if (!Ship) return;
-	if (!bArrivingFromJump && System.Stations.Num())
+	UCommanderSubsystem* Cmdr = GetGameInstance()->GetSubsystem<UCommanderSubsystem>();
+	if (Cmdr)
+	{
+		Cmdr->S.SystemId = System.Id;
+		const int32 V = Cmdr->VisitSystem(System);
+		if (V > 0) Ship->Msg(FString::Printf(TEXT("First visit: %s logged in the survey computer (+%d CR of exploration data)"), *System.Name, V));
+		Cmdr->Save();
+	}
+	// resume docked where the commander left the ship
+	const FStationData* Resume = (!bArrivingFromJump && Cmdr && !Cmdr->S.DockedAt.IsEmpty()) ? System.FindStation(Cmdr->S.DockedAt) : nullptr;
+	if (Resume)
+	{
+		Ship->DockAt(Resume->Id, 0);
+		Ship->Msg(FString::Printf(TEXT("Docked at %s. L to launch."), *Resume->Name));
+	}
+	else if (!bArrivingFromJump && System.Stations.Num())
 	{
 		// concept-art framing: a few km from the first station, host planet to the left
 		const FStationData& St = System.Stations[0];
@@ -374,7 +392,7 @@ void AOmniGameMode::BuildSelect(int32 Slot)
 	if (Slot < 1 || Slot > 6) return;
 	BuildKind = Slots[Slot - 1];
 	const FModuleSpec& S = Outpost::Spec(BuildKind);
-	BuildStatus = FString::Printf(TEXT("%s - %s. Needs %.0f t alloy, %.0f t composites, %.0f t electronics"), S.Name, S.Blurb, S.Cost.Alloy, S.Cost.Composites, S.Cost.Electronics);
+	BuildStatus = FString::Printf(TEXT("%s - %s. Needs %.0f t metals, %.0f t machinery, %.0f t electronics"), S.Name, S.Blurb, S.Cost.Metals, S.Cost.Machinery, S.Cost.Electronics);
 }
 
 void AOmniGameMode::BuildRotate(int32 Dir)
@@ -457,14 +475,15 @@ void AOmniGameMode::BuildPlace()
 		Say(FString::Printf(TEXT("%s founded. 1-6 choose a module, [ ] rotate, Enter place."), *D->Name));
 		BuildKind = EModuleKind::Hab;
 	}
-	else Say(FString::Printf(TEXT("%s site marked - needs %.0f t alloy, %.0f t composites, %.0f t electronics. Land with cargo within %.0f m to deliver."), S.Name, S.Cost.Alloy, S.Cost.Composites, S.Cost.Electronics, Outpost::DeliverM));
+	else Say(FString::Printf(TEXT("%s site marked - needs %.0f t metals, %.0f t machinery, %.0f t electronics. Land with them aboard within %.0f m to deliver."), S.Name, S.Cost.Metals, S.Cost.Machinery, S.Cost.Electronics, Outpost::DeliverM));
 	if (Ship && Ship->Audio) Ship->Audio->Play(TEXT("chime"), 0.6f);
 }
 
-double AOmniGameMode::DeliverMaterials(FMaterials& Hold, const FVector& ShipPosCm)
+double AOmniGameMode::DeliverMaterials(const FVector& ShipPosCm)
 {
 	FOutpostData* D = CurrentOutpostData();
-	if (!D || !OutpostActor || Hold.Total() < 0.01) return 0;
+	UCommanderSubsystem* Cmdr = GetGameInstance()->GetSubsystem<UCommanderSubsystem>();
+	if (!D || !OutpostActor || !Cmdr) return 0;
 	const FVector2D ShipM(ShipPosCm.X / 100.0, ShipPosCm.Y / 100.0);
 	if ((ShipM - D->OriginM).Size() > Outpost::DeliverM) return 0;
 	double Moved = 0;
@@ -472,13 +491,14 @@ double AOmniGameMode::DeliverMaterials(FMaterials& Hold, const FVector& ShipPosC
 	{
 		FOutpostModule& M = D->Modules[i];
 		FMaterials Need = M.Remaining();
-		const double A = FMath::Min(Need.Alloy, Hold.Alloy), C = FMath::Min(Need.Composites, Hold.Composites), E = FMath::Min(Need.Electronics, Hold.Electronics);
-		M.Delivered.Alloy += A; M.Delivered.Composites += C; M.Delivered.Electronics += E;
-		Hold.Alloy -= A; Hold.Composites -= C; Hold.Electronics -= E;
-		Moved += A + C + E;
-		if (A + C + E > 0) OutpostActor->RebuildModule(i);
-		if (Hold.Total() < 0.01) break;
+		const double A = FMath::Min(Need.Metals, Cmdr->Held(TEXT("metals")));
+		const double B = FMath::Min(Need.Machinery, Cmdr->Held(TEXT("machinery")));
+		const double E = FMath::Min(Need.Electronics, Cmdr->Held(TEXT("electronics")));
+		M.Delivered.Metals += A; M.Delivered.Machinery += B; M.Delivered.Electronics += E;
+		Cmdr->AddCargo(TEXT("metals"), -A); Cmdr->AddCargo(TEXT("machinery"), -B); Cmdr->AddCargo(TEXT("electronics"), -E);
+		Moved += A + B + E;
+		if (A + B + E > 0) OutpostActor->RebuildModule(i);
 	}
-	if (Moved > 0) SaveOutposts();
+	if (Moved > 0) { SaveOutposts(); Cmdr->Save(); }
 	return Moved;
 }
