@@ -174,6 +174,17 @@ void AShipPawn::SetupPlayerInputComponent(UInputComponent* IC)
 	IC->BindKey(EKeys::N, IE_Pressed, this, &AShipPawn::OnCycleJump);
 	IC->BindKey(EKeys::G, IE_Pressed, this, &AShipPawn::OnRover);
 	IC->BindKey(EKeys::K, IE_Pressed, this, &AShipPawn::OnToggleLights);
+	IC->BindKey(EKeys::U, IE_Pressed, this, &AShipPawn::OnLoadCargo);
+	IC->BindKey(EKeys::O, IE_Pressed, this, &AShipPawn::OnBuildToggle);
+	IC->BindKey(EKeys::Enter, IE_Pressed, this, &AShipPawn::OnBuildPlace);
+	IC->BindKey(EKeys::LeftBracket, IE_Pressed, this, &AShipPawn::OnBuildRotL);
+	IC->BindKey(EKeys::RightBracket, IE_Pressed, this, &AShipPawn::OnBuildRotR);
+	IC->BindKey(EKeys::One, IE_Pressed, this, &AShipPawn::OnBuildSlot1);
+	IC->BindKey(EKeys::Two, IE_Pressed, this, &AShipPawn::OnBuildSlot2);
+	IC->BindKey(EKeys::Three, IE_Pressed, this, &AShipPawn::OnBuildSlot3);
+	IC->BindKey(EKeys::Four, IE_Pressed, this, &AShipPawn::OnBuildSlot4);
+	IC->BindKey(EKeys::Five, IE_Pressed, this, &AShipPawn::OnBuildSlot5);
+	IC->BindKey(EKeys::Six, IE_Pressed, this, &AShipPawn::OnBuildSlot6);
 	IC->BindKey(EKeys::B, IE_Pressed, this, &AShipPawn::OnCycleFar);
 	IC->BindKey(EKeys::M, IE_Pressed, this, &AShipPawn::OnToggleMap);
 	IC->BindKey(EKeys::Seven, IE_Pressed, this, &AShipPawn::OnDebugSky);
@@ -610,6 +621,41 @@ void AShipPawn::SetLandingLights(bool bOn, bool bAnnounce)
 	if (Audio && bAnnounce) Audio->Play(TEXT("blip"));
 }
 
+void AShipPawn::OnLoadCargo()
+{
+	AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode());
+	if (Mode == EFlightMode::Docked)
+	{
+		// the station's yard fills the hold with a standard construction load
+		const double Room = FMath::Max(0.0, CargoCapacity - Cargo.Total());
+		if (Room < 0.5) { Msg(TEXT("Hold is full")); return; }
+		Cargo.Alloy += Room * 0.5; Cargo.Composites += Room * 0.25; Cargo.Electronics += Room * 0.25;
+		Msg(FString::Printf(TEXT("Construction materials loaded: %.0f t alloy, %.0f t composites, %.0f t electronics aboard"), Cargo.Alloy, Cargo.Composites, Cargo.Electronics));
+		if (Audio) Audio->Play(TEXT("chime"), 0.6f);
+		return;
+	}
+	if (Mode == EFlightMode::Landed && GM)
+	{
+		const double Moved = GM->DeliverMaterials(Cargo, GetActorLocation());
+		if (Moved > 0) { Msg(FString::Printf(TEXT("Unloaded %.0f t to the construction sites"), Moved)); if (Audio) Audio->Play(TEXT("dock_clunk"), 0.6f); }
+		else if (Cargo.Total() < 0.01) Msg(TEXT("Nothing in the hold - load materials at a station (U when docked)"));
+		else Msg(TEXT("No site within range needs materials - land within 160 m of the outpost beacon"));
+		return;
+	}
+	Msg(TEXT("Dock at a station to load materials, land at an outpost to unload"));
+}
+
+void AShipPawn::OnBuildToggle() { if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode())) GM->ToggleBuildMode(); }
+void AShipPawn::OnBuildPlace() { if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode())) GM->BuildPlace(); }
+void AShipPawn::OnBuildRotL() { if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode())) GM->BuildRotate(-1); }
+void AShipPawn::OnBuildRotR() { if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode())) GM->BuildRotate(1); }
+void AShipPawn::OnBuildSlot1() { if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode())) GM->BuildSelect(1); }
+void AShipPawn::OnBuildSlot2() { if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode())) GM->BuildSelect(2); }
+void AShipPawn::OnBuildSlot3() { if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode())) GM->BuildSelect(3); }
+void AShipPawn::OnBuildSlot4() { if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode())) GM->BuildSelect(4); }
+void AShipPawn::OnBuildSlot5() { if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode())) GM->BuildSelect(5); }
+void AShipPawn::OnBuildSlot6() { if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode())) GM->BuildSelect(6); }
+
 void AShipPawn::OnRover()
 {
 	AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode());
@@ -764,8 +810,13 @@ void AShipPawn::FlySurface(float Dt)
 			AngVel = FVector::ZeroVector;
 			Throttle = 0;
 			Orientation = FRotationMatrix::MakeFromXZ(FVector::VectorPlaneProject(Orientation.GetForwardVector(), N).GetSafeNormal(), N).ToQuat();
-			Msg(TEXT("Touchdown. G deploys the rover, L lifts off."));
+			Msg(TEXT("Touchdown. G deploys the rover, L lifts off, O builds."));
 			if (Audio) Audio->Play(TEXT("dock_clunk"), 1.f);
+			if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode()))
+			{
+				const double Moved = GM->DeliverMaterials(Cargo, SurfacePos);
+				if (Moved > 0) Msg(FString::Printf(TEXT("Unloaded %.0f t to the construction sites"), Moved));
+			}
 		}
 		else
 		{
@@ -1084,6 +1135,18 @@ void AShipPawn::Tick(float Dt)
 	Super::Tick(Dt);
 	Time += Dt;
 	if (!Director) return;
+	// frame pacing probe: once a second, log min/avg/max frame time by flight phase (warp charge,
+	// hyperspace, normal). Cheap, and the only honest way to tell shader cost from hitching.
+	{
+		static double Acc = 0, Mn = 1, Mx = 0; static int32 N = 0;
+		Acc += Dt; Mn = FMath::Min(Mn, (double)Dt); Mx = FMath::Max(Mx, (double)Dt); N++;
+		if (Acc >= 1.0)
+		{
+			const TCHAR* Phase = Mode == EFlightMode::Hyperspace ? TEXT("hyperspace") : WarpAmount > 0.05f ? TEXT("warp") : Mode == EFlightMode::Surface || Mode == EFlightMode::Landed ? TEXT("surface") : TEXT("space");
+			UE_LOG(LogOmniSpace, Log, TEXT("[frame] %s avg %.1f ms  min %.1f  max %.1f  (%d frames)"), Phase, Acc / N * 1000, Mn * 1000, Mx * 1000, N);
+			Acc = 0; Mn = 1; Mx = 0; N = 0;
+		}
+	}
 	Dt = FMath::Min(Dt, 0.1f);
 	InPitch = KPitchUp - KPitchDown;
 	InYaw = KYawR - KYawL;
@@ -1181,6 +1244,9 @@ void AShipPawn::Tick(float Dt)
 	default: break;
 	}
 	if (Time - LastHit > 4) Shields = FMath::Min(1.0, Shields + Dt * 0.04);
+	if (Mode == EFlightMode::Landed)
+		if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode()))
+			if (GM->bBuildMode) GM->UpdateBuildGhost(GetActorLocation(), Orientation.GetForwardVector());
 	// ---- frame-shift visuals: sky streak during the jump charge, white-out at the crossover,
 	// stars rushing back in after arrival
 	{

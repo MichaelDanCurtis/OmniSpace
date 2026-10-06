@@ -2,7 +2,13 @@
 #include "Core/OmniHUD.h"
 #include "Ship/ShipPawn.h"
 #include "Ship/RoverPawn.h"
+#include "Ship/ShipAudio.h"
 #include "World/SurfaceTile.h"
+#include "World/OutpostActor.h"
+#include "JsonObjectConverter.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
+#include "HAL/PlatformFileManager.h"
 #include "World/SkyActor.h"
 #include "Engine/DirectionalLight.h"
 #include "Components/DirectionalLightComponent.h"
@@ -22,11 +28,23 @@ AOmniGameMode::AOmniGameMode()
 {
 	DefaultPawnClass = AShipPawn::StaticClass();
 	HUDClass = AOmniHUD::StaticClass();
+	PrimaryActorTick.bCanEverTick = true;
+}
+
+void AOmniGameMode::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+	if (OutpostActor && OutpostActor->AdvanceConstruction(DeltaSeconds))
+	{
+		SaveOutposts();
+		if (AShipPawn* Ship = Cast<AShipPawn>(UGameplayStatics::GetPlayerPawn(GetWorld(), 0))) Ship->Msg(TEXT("Outpost: construction complete"));
+	}
 }
 
 void AOmniGameMode::BeginPlay()
 {
 	Super::BeginPlay();
+	LoadOutposts();
 	UWorld* World = GetWorld();
 	if (AWorldSettings* WS = World->GetWorldSettings())
 	{
@@ -199,6 +217,7 @@ void AOmniGameMode::EnterSurface(const FString& BodyId, const FVector2D& Site)
 	FVector BP; double BR;
 	Director->GetEntityPos(BodyId, BP, BR);
 	SurfaceBodyId = BodyId;
+	SurfaceSite = Site;
 	SurfaceApproachDir = (Director->GetShipUniversePos() - BP).GetSafeNormal();
 	Director->SetSystemHidden(true);
 	FActorSpawnParameters P;
@@ -210,7 +229,25 @@ void AOmniGameMode::EnterSurface(const FString& BodyId, const FVector2D& Site)
 	if (ADirectionalLight* Sun = Director->GetSunLight())
 		Sun->SetActorRotation(FRotator(-38.0, Site.X * 360.0, 0));
 	Ship->StartDescent(Tile);
-	UE_LOG(LogOmniSpace, Log, TEXT("Surface: %s at site (%.2f, %.2f)"), *B->Name, Site.X, Site.Y);
+	// an outpost founded at this site comes back with it
+	CurrentOutpost = -1;
+	for (int32 i = 0; i < Outposts.Num(); i++)
+		if (Outposts[i].BodyId == BodyId && Outposts[i].SystemId == Director->GetSystem().Id && (Outposts[i].Site - Site).Size() < 0.04) { CurrentOutpost = i; break; }
+	if (CurrentOutpost >= 0) SpawnOutpostActor();
+	UE_LOG(LogOmniSpace, Log, TEXT("Surface: %s at site (%.2f, %.2f)%s"), *B->Name, Site.X, Site.Y, CurrentOutpost >= 0 ? TEXT(" - outpost here") : TEXT(""));
+}
+
+void AOmniGameMode::SpawnOutpostActor()
+{
+	FOutpostData* D = CurrentOutpostData();
+	if (!Tile || !D) return;
+	if (!OutpostActor)
+	{
+		FActorSpawnParameters P;
+		P.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		OutpostActor = GetWorld()->SpawnActor<AOutpostActor>(AOutpostActor::StaticClass(), FTransform::Identity, P);
+	}
+	OutpostActor->Init(Tile, D);
 }
 
 void AOmniGameMode::LeaveSurface()
@@ -218,6 +255,9 @@ void AOmniGameMode::LeaveSurface()
 	AShipPawn* Ship = Cast<AShipPawn>(UGameplayStatics::GetPlayerPawn(GetWorld(), 0));
 	if (!Director || !Tile) return;
 	if (Rover) { Rover->Destroy(); Rover = nullptr; }
+	if (OutpostActor) { OutpostActor->Destroy(); OutpostActor = nullptr; }
+	bBuildMode = false;
+	CurrentOutpost = -1;
 	Tile->Destroy();
 	Tile = nullptr;
 	Director->SetSystemHidden(false);
@@ -271,4 +311,174 @@ void AOmniGameMode::BoardShip()
 	Rover = nullptr;
 	TheShip->Msg(TEXT("Back aboard. L or W to lift off."));
 	(void)Ship;
+}
+
+// ---------------------------------------------------------------- outposts
+FString AOmniGameMode::OutpostSavePath() const
+{
+	return FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("OmniSpace"), TEXT("outposts.json"));
+}
+
+void AOmniGameMode::SaveOutposts()
+{
+	FOutpostSave S;
+	S.Outposts = Outposts;
+	FString Json;
+	if (FJsonObjectConverter::UStructToJsonObjectString(S, Json))
+	{
+		FPlatformFileManager::Get().GetPlatformFile().CreateDirectoryTree(*FPaths::GetPath(OutpostSavePath()));
+		FFileHelper::SaveStringToFile(Json, *OutpostSavePath());
+	}
+}
+
+void AOmniGameMode::LoadOutposts()
+{
+	FString Json;
+	if (!FFileHelper::LoadFileToString(Json, *OutpostSavePath())) return;
+	FOutpostSave S;
+	if (FJsonObjectConverter::JsonObjectStringToUStruct(Json, &S)) Outposts = S.Outposts;
+	UE_LOG(LogOmniSpace, Log, TEXT("[outpost] loaded %d outposts"), Outposts.Num());
+}
+
+void AOmniGameMode::ToggleBuildMode()
+{
+	AShipPawn* Ship = Cast<AShipPawn>(UGameplayStatics::GetPlayerPawn(GetWorld(), 0));
+	APawn* Pawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
+	auto Say = [&](const FString& T) { if (Ship) Ship->Msg(T); else if (Rover) Rover->Msg(T); };
+	if (!Tile) { Say(TEXT("Outposts are built on a planet's surface - land first")); return; }
+	if (Ship && Ship->Mode != EFlightMode::Landed) { Say(TEXT("Set down first, then build (or take the rover out)")); return; }
+	bBuildMode = !bBuildMode;
+	if (bBuildMode)
+	{
+		FOutpostData* D = CurrentOutpostData();
+		BuildKind = (D && D->HasBeacon()) ? EModuleKind::Hab : EModuleKind::Beacon;
+		BuildRot = 0;
+		BuildStatus = D && D->HasBeacon() ? TEXT("1-6 choose module, [ ] rotate, Enter place, O done") : TEXT("Place the outpost beacon: Enter to set it down, O to cancel");
+		Say(BuildStatus);
+	}
+	else
+	{
+		if (OutpostActor) OutpostActor->ClearGhost();
+		BuildStatus.Empty();
+		Say(TEXT("Build mode off"));
+	}
+	(void)Pawn;
+}
+
+void AOmniGameMode::BuildSelect(int32 Slot)
+{
+	if (!bBuildMode) return;
+	FOutpostData* D = CurrentOutpostData();
+	if (!D || !D->HasBeacon()) { BuildStatus = TEXT("Place the beacon first"); return; }
+	static const EModuleKind Slots[] = { EModuleKind::Hab, EModuleKind::Power, EModuleKind::Storage, EModuleKind::Corridor, EModuleKind::Lab, EModuleKind::Pad };
+	if (Slot < 1 || Slot > 6) return;
+	BuildKind = Slots[Slot - 1];
+	const FModuleSpec& S = Outpost::Spec(BuildKind);
+	BuildStatus = FString::Printf(TEXT("%s - %s. Needs %.0f t alloy, %.0f t composites, %.0f t electronics"), S.Name, S.Blurb, S.Cost.Alloy, S.Cost.Composites, S.Cost.Electronics);
+}
+
+void AOmniGameMode::BuildRotate(int32 Dir)
+{
+	if (!bBuildMode) return;
+	BuildRot = (BuildRot + Dir + 4) % 4;
+}
+
+void AOmniGameMode::UpdateBuildGhost(const FVector& PawnPosCm, const FVector& Facing)
+{
+	if (!bBuildMode || !Tile) return;
+	FOutpostModule M; M.Kind = BuildKind; M.Rot = BuildRot;
+	const int32 W = M.FootW(), H = M.FootH();
+	// the ghost sits ahead of the pawn, its footprint centred there, snapped to the grid
+	const FVector FwdH = FVector(Facing.X, Facing.Y, 0).GetSafeNormal();
+	const FVector AimM = (PawnPosCm + FwdH * (1400.0 + FMath::Max(W, H) * Outpost::CellM * 50.0)) / 100.0;
+	FOutpostData* D = CurrentOutpostData();
+	const FVector2D Origin = D ? D->OriginM : FVector2D(AimM.X, AimM.Y);
+	GhostGX = FMath::RoundToInt((AimM.X - Origin.X) / Outpost::CellM - W * 0.5);
+	GhostGY = FMath::RoundToInt((AimM.Y - Origin.Y) / Outpost::CellM - H * 0.5);
+	if (!D)
+	{
+		// no outpost yet: a temporary record so the actor can validate and draw the beacon ghost
+		FOutpostData Tmp;
+		Tmp.OriginM = Origin;
+		if (!OutpostActor)
+		{
+			FActorSpawnParameters P;
+			P.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+			OutpostActor = GetWorld()->SpawnActor<AOutpostActor>(AOutpostActor::StaticClass(), FTransform::Identity, P);
+		}
+		static FOutpostData Scratch;
+		Scratch = Tmp;
+		OutpostActor->Init(Tile, &Scratch);
+		GhostGX = 0; GhostGY = 0;
+	}
+	FString Why;
+	bGhostValid = OutpostActor->Validate(BuildKind, GhostGX, GhostGY, BuildRot, Why);
+	if (BuildKind == EModuleKind::Beacon && bGhostValid && FVector2D(AimM.X, AimM.Y).Size() > 1500.0) { bGhostValid = false; Why = TEXT("Outposts go within 1.5 km of the landing site"); }
+	OutpostActor->SetGhost(BuildKind, GhostGX, GhostGY, BuildRot, bGhostValid);
+	if (!bGhostValid) BuildStatus = Why;
+	else if (BuildKind == EModuleKind::Beacon) BuildStatus = TEXT("Enter to found the outpost here");
+	else BuildStatus = FString::Printf(TEXT("%s: Enter to place the construction site  ([ ] rotate)"), Outpost::Spec(BuildKind).Name);
+}
+
+void AOmniGameMode::BuildPlace()
+{
+	if (!bBuildMode || !OutpostActor || !Tile || !Director) return;
+	AShipPawn* Ship = Cast<AShipPawn>(UGameplayStatics::GetPlayerPawn(GetWorld(), 0));
+	auto Say = [&](const FString& T) { if (Ship) Ship->Msg(T); else if (Rover) Rover->Msg(T); };
+	if (!bGhostValid) { Say(BuildStatus); return; }
+	FOutpostData* D = CurrentOutpostData();
+	if (!D)
+	{
+		// founding: the beacon's cell becomes grid (0,0)
+		FOutpostData N;
+		N.BodyId = SurfaceBodyId;
+		N.SystemId = Director->GetSystem().Id;
+		N.Site = FVector2D::ZeroVector;
+		if (const FBodyData* B = Director->GetSystem().FindBody(SurfaceBodyId)) N.Name = B->Name + TEXT(" Outpost");
+		const FOutpostData* Scratch = OutpostActor->GetData();
+		N.OriginM = Scratch ? Scratch->OriginM : FVector2D::ZeroVector;
+		// remember the site we landed at so the outpost comes back with this tile
+		N.Site = SurfaceSite;
+		Outposts.Add(N);
+		CurrentOutpost = Outposts.Num() - 1;
+		D = CurrentOutpostData();
+		OutpostActor->Init(Tile, D);
+	}
+	FOutpostModule M;
+	M.Kind = BuildKind; M.GX = GhostGX; M.GY = GhostGY; M.Rot = BuildRot;
+	if (M.Kind == EModuleKind::Beacon) { M.Delivered = Outpost::Spec(M.Kind).Cost; } // the beacon is carried aboard
+	D->Modules.Add(M);
+	OutpostActor->ClearGhost();
+	OutpostActor->RebuildModule(D->Modules.Num() - 1);
+	SaveOutposts();
+	const FModuleSpec& S = Outpost::Spec(M.Kind);
+	if (M.Kind == EModuleKind::Beacon)
+	{
+		Say(FString::Printf(TEXT("%s founded. 1-6 choose a module, [ ] rotate, Enter place."), *D->Name));
+		BuildKind = EModuleKind::Hab;
+	}
+	else Say(FString::Printf(TEXT("%s site marked - needs %.0f t alloy, %.0f t composites, %.0f t electronics. Land with cargo within %.0f m to deliver."), S.Name, S.Cost.Alloy, S.Cost.Composites, S.Cost.Electronics, Outpost::DeliverM));
+	if (Ship && Ship->Audio) Ship->Audio->Play(TEXT("chime"), 0.6f);
+}
+
+double AOmniGameMode::DeliverMaterials(FMaterials& Hold, const FVector& ShipPosCm)
+{
+	FOutpostData* D = CurrentOutpostData();
+	if (!D || !OutpostActor || Hold.Total() < 0.01) return 0;
+	const FVector2D ShipM(ShipPosCm.X / 100.0, ShipPosCm.Y / 100.0);
+	if ((ShipM - D->OriginM).Size() > Outpost::DeliverM) return 0;
+	double Moved = 0;
+	for (int32 i : OutpostActor->SitesNeedingMaterials())
+	{
+		FOutpostModule& M = D->Modules[i];
+		FMaterials Need = M.Remaining();
+		const double A = FMath::Min(Need.Alloy, Hold.Alloy), C = FMath::Min(Need.Composites, Hold.Composites), E = FMath::Min(Need.Electronics, Hold.Electronics);
+		M.Delivered.Alloy += A; M.Delivered.Composites += C; M.Delivered.Electronics += E;
+		Hold.Alloy -= A; Hold.Composites -= C; Hold.Electronics -= E;
+		Moved += A + C + E;
+		if (A + C + E > 0) OutpostActor->RebuildModule(i);
+		if (Hold.Total() < 0.01) break;
+	}
+	if (Moved > 0) SaveOutposts();
+	return Moved;
 }

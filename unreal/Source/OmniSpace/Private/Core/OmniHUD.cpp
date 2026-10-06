@@ -43,6 +43,50 @@ namespace
 	const FLinearColor HudGrey(0.6f, 0.68f, 0.76f, 0.9f);
 }
 
+void AOmniHUD::DrawBuildPanel(AOmniGameMode* GM, UFont* Font, float W, float H, float U)
+{
+	if (!GM || !GM->Tile) return;
+	FOutpostData* D = GM->CurrentOutpostData();
+	const float PW = 300 * U, PX = W - 28 * U - PW;
+	float Y = 24 * U;
+	if (D)
+	{
+		DrawRect(HudPanel, PX - 8 * U, Y - 6 * U, PW + 16 * U, (34 + 18 * FMath::Min(6, D->Modules.Num())) * U);
+		DrawText(D->Name.ToUpper(), HudWhite, PX, Y, Font, 1.05f * U); Y += 20 * U;
+		int32 Shown = 0;
+		for (const FOutpostModule& M : D->Modules)
+		{
+			if (Shown++ >= 6) break;
+			const FModuleSpec& S = Outpost::Spec(M.Kind);
+			FString Line;
+			FLinearColor C = HudGreen;
+			if (M.bComplete) Line = FString::Printf(TEXT("%s  built"), S.Name);
+			else if (M.Supplied()) { Line = FString::Printf(TEXT("%s  building %.0f%%"), S.Name, M.Progress * 100); C = HudAmber; }
+			else { const FMaterials R = M.Remaining(); Line = FString::Printf(TEXT("%s  needs %.0f/%.0f/%.0f t"), S.Name, R.Alloy, R.Composites, R.Electronics); C = HudCyanDim; }
+			DrawText(Line, C, PX, Y, Font, 0.85f * U); Y += 18 * U;
+		}
+		Y += 10 * U;
+	}
+	if (!GM->bBuildMode) return;
+	const bool bBeacon = !D || !D->HasBeacon();
+	const int32 Rows = bBeacon ? 1 : 6;
+	DrawRect(HudPanel, PX - 8 * U, Y - 6 * U, PW + 16 * U, (46 + 18 * Rows) * U);
+	DrawText(TEXT("BUILD"), HudAmber, PX, Y, Font, 1.05f * U); Y += 20 * U;
+	if (bBeacon) { DrawText(TEXT("Outpost beacon  (Enter to place)"), GM->BuildKind == EModuleKind::Beacon ? HudWhite : HudCyanDim, PX, Y, Font, 0.85f * U); Y += 18 * U; }
+	else
+	{
+		static const EModuleKind Slots[] = { EModuleKind::Hab, EModuleKind::Power, EModuleKind::Storage, EModuleKind::Corridor, EModuleKind::Lab, EModuleKind::Pad };
+		for (int32 i = 0; i < 6; i++)
+		{
+			const FModuleSpec& S = Outpost::Spec(Slots[i]);
+			const bool bSel = GM->BuildKind == Slots[i];
+			DrawText(FString::Printf(TEXT("%d  %s   %.0f/%.0f/%.0f t"), i + 1, S.Name, S.Cost.Alloy, S.Cost.Composites, S.Cost.Electronics), bSel ? HudWhite : HudCyanDim, PX, Y, Font, 0.85f * U);
+			Y += 18 * U;
+		}
+	}
+	DrawText(GM->BuildStatus, GM->bGhostValid ? HudGreen : HudAmber, PX, Y + 4 * U, Font, 0.8f * U);
+}
+
 void AOmniHUD::Bar(float X, float Y, float W, float H, double Frac, const FLinearColor& C)
 {
 	DrawRect(FLinearColor(C.R, C.G, C.B, 0.12f), X, Y, W, H);
@@ -89,7 +133,8 @@ void AOmniHUD::DrawHUD()
 		const int32 N = FMath::Min(4, Rover->Messages.Num());
 		float Y = H - 40 * U - 19 * U * N;
 		for (int32 i = Rover->Messages.Num() - N; i < Rover->Messages.Num(); i++) { DrawText(Rover->Messages[i], FLinearColor(0.85f, 0.92f, 1.f, 0.95f), 28 * U, Y, Font, 0.95f * U); Y += 19 * U; }
-		DrawText(TEXT("W/S drive   A/D steer   Space brake   mouse look   G board the ship (within 25 m)"), FLinearColor(0.5f, 0.6f, 0.7f, 0.8f), 28 * U, H - 16 * U, Font, 0.8f * U);
+		DrawText(TEXT("W/S drive   A/D steer   Space brake   mouse look   G board the ship (within 25 m)   O build   1-6 module   [ ] rotate   Enter place"), FLinearColor(0.5f, 0.6f, 0.7f, 0.8f), 28 * U, H - 16 * U, Font, 0.8f * U);
+		DrawBuildPanel(Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode()), Font, W, H, U);
 		return;
 	}
 	AShipPawn* Ship = Cast<AShipPawn>(UGameplayStatics::GetPlayerPawn(GetWorld(), 0));
@@ -164,6 +209,9 @@ void AOmniHUD::DrawHUD()
 		Row(TEXT("SHIELDS"), Ship->Shields, HudCyan, FString::Printf(TEXT("%3.0f%%"), Ship->Shields * 100), PY + 32 * U);
 		Row(TEXT("FUEL"), Ship->Fuel / 16.0, Ship->Fuel < 3 ? HudRed : HudAmber, FString::Printf(TEXT("%4.1f t"), Ship->Fuel), PY + 64 * U);
 		Row(TEXT("HEAT"), Ship->Heat, Ship->Heat > 0.8 ? HudRed : HudAmber, FString::Printf(TEXT("%3.0f%%"), Ship->Heat * 100), PY + 96 * U);
+		if (Ship->Cargo.Total() > 0.01)
+			DrawText(FString::Printf(TEXT("CARGO %.0f t   alloy %.0f  comp %.0f  elec %.0f"), Ship->Cargo.Total(), Ship->Cargo.Alloy, Ship->Cargo.Composites, Ship->Cargo.Electronics), HudCyanDim, PX, PY + 128 * U, Font, 0.8f * U);
+		if (Ship->Mode == EFlightMode::Landed || Ship->Mode == EFlightMode::Surface) DrawBuildPanel(GM, Font, W, H, U);
 	}
 
 	// ---------------------------------------------------------------- centre: reticle, flight vector, markers
@@ -342,6 +390,6 @@ void AOmniHUD::DrawHUD()
 			DrawText(Ship->Messages[i], FLinearColor(0.85f, 0.92f, 1.f, 0.95f - Age * 0.15f), 28 * U, Y, Font, 0.95f * U);
 			Y += 19 * U;
 		}
-		DrawText(TEXT("W/S throttle   mouse/arrows steer   A/D roll   Q/E R/F thrusters   Tab boost   J supercruise   T target   N jump target   B plot route   M map   H jump   P autopilot   L dock/land/launch   G rover   K lights   Z FA   X stop   C 75%"), FLinearColor(0.5f, 0.6f, 0.7f, 0.8f), 28 * U, H - 16 * U, Font, 0.8f * U);
+		DrawText(TEXT("W/S throttle   mouse/arrows steer   A/D roll   Q/E R/F thrusters   Tab boost   J supercruise   T target   N jump target   B plot route   M map   H jump   P autopilot   L dock/land/launch   G rover   K lights   O build   U cargo   Z FA   X stop   C 75%"), FLinearColor(0.5f, 0.6f, 0.7f, 0.8f), 28 * U, H - 16 * U, Font, 0.8f * U);
 	}
 }

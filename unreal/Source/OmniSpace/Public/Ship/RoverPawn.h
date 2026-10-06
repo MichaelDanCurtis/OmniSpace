@@ -47,6 +47,11 @@ protected:
 	float KFwd = 0, KBack = 0, KLeft = 0, KRight = 0;
 	bool bBrake = false;
 	void OnBoard();
+	void OnBuildToggle();
+	void OnBuildPlace();
+	void OnBuildRotL();
+	void OnBuildRotR();
+	void OnBuildSlot1(); void OnBuildSlot2(); void OnBuildSlot3(); void OnBuildSlot4(); void OnBuildSlot5(); void OnBuildSlot6();
 	void OnBrakeDown() { bBrake = true; }
 	void OnBrakeUp() { bBrake = false; }
 	void OnMouseX(float V) { CamYaw += V * 0.6; }

@@ -120,6 +120,16 @@ void ARoverPawn::SetupPlayerInputComponent(UInputComponent* IC)
 	IC->BindKey(EKeys::SpaceBar, IE_Pressed, this, &ARoverPawn::OnBrakeDown);
 	IC->BindKey(EKeys::SpaceBar, IE_Released, this, &ARoverPawn::OnBrakeUp);
 	IC->BindKey(EKeys::G, IE_Pressed, this, &ARoverPawn::OnBoard);
+	IC->BindKey(EKeys::O, IE_Pressed, this, &ARoverPawn::OnBuildToggle);
+	IC->BindKey(EKeys::Enter, IE_Pressed, this, &ARoverPawn::OnBuildPlace);
+	IC->BindKey(EKeys::LeftBracket, IE_Pressed, this, &ARoverPawn::OnBuildRotL);
+	IC->BindKey(EKeys::RightBracket, IE_Pressed, this, &ARoverPawn::OnBuildRotR);
+	IC->BindKey(EKeys::One, IE_Pressed, this, &ARoverPawn::OnBuildSlot1);
+	IC->BindKey(EKeys::Two, IE_Pressed, this, &ARoverPawn::OnBuildSlot2);
+	IC->BindKey(EKeys::Three, IE_Pressed, this, &ARoverPawn::OnBuildSlot3);
+	IC->BindKey(EKeys::Four, IE_Pressed, this, &ARoverPawn::OnBuildSlot4);
+	IC->BindKey(EKeys::Five, IE_Pressed, this, &ARoverPawn::OnBuildSlot5);
+	IC->BindKey(EKeys::Six, IE_Pressed, this, &ARoverPawn::OnBuildSlot6);
 	IC->BindAxisKey(EKeys::MouseX, this, &ARoverPawn::OnMouseX);
 	IC->BindAxisKey(EKeys::MouseY, this, &ARoverPawn::OnMouseY);
 }
@@ -144,6 +154,17 @@ void ARoverPawn::Deploy(ASurfaceTile* InTile, AShipPawn* InShip, const FVector& 
 	Msg(TEXT("Rover deployed. W/S drive, A/D steer, Space brake, mouse looks, G near the ship to board."));
 }
 
+void ARoverPawn::OnBuildToggle() { if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode())) GM->ToggleBuildMode(); }
+void ARoverPawn::OnBuildPlace() { if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode())) GM->BuildPlace(); }
+void ARoverPawn::OnBuildRotL() { if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode())) GM->BuildRotate(-1); }
+void ARoverPawn::OnBuildRotR() { if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode())) GM->BuildRotate(1); }
+void ARoverPawn::OnBuildSlot1() { if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode())) GM->BuildSelect(1); }
+void ARoverPawn::OnBuildSlot2() { if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode())) GM->BuildSelect(2); }
+void ARoverPawn::OnBuildSlot3() { if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode())) GM->BuildSelect(3); }
+void ARoverPawn::OnBuildSlot4() { if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode())) GM->BuildSelect(4); }
+void ARoverPawn::OnBuildSlot5() { if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode())) GM->BuildSelect(5); }
+void ARoverPawn::OnBuildSlot6() { if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode())) GM->BuildSelect(6); }
+
 void ARoverPawn::OnBoard()
 {
 	if (!Ship) return;
@@ -156,6 +177,8 @@ void ARoverPawn::Tick(float Dt)
 	Super::Tick(Dt);
 	if (!Tile) return;
 	Dt = FMath::Min(Dt, 0.1f);
+	if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode()))
+		if (GM->bBuildMode) GM->UpdateBuildGhost(GetActorLocation(), FVector(FMath::Cos(Heading), FMath::Sin(Heading), 0));
 	const double G = Tile->Gravity();
 	// --- drive
 	const double Throttle = KFwd - KBack;

@@ -4,6 +4,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Data/OutpostData.h"
 #include "GameFramework/Pawn.h"
 #include "Data/StarSystemData.h"
 #include "ShipPawn.generated.h"
@@ -49,6 +50,8 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Ship") double Shields = 1;
 	UPROPERTY(BlueprintReadOnly, Category = "Ship") double Hull = 1;
 	UPROPERTY(BlueprintReadOnly, Category = "Ship") double Fuel = 16;
+	UPROPERTY(BlueprintReadOnly, Category = "Ship") FMaterials Cargo;       // construction materials aboard (t)
+	UPROPERTY(BlueprintReadOnly, Category = "Ship") double CargoCapacity = 32;
 	UPROPERTY(BlueprintReadOnly, Category = "Ship") double Heat = 0.2;
 	UPROPERTY(BlueprintReadOnly, Category = "Ship") EFsdKind FsdKind = EFsdKind::None;
 	UPROPERTY(BlueprintReadOnly, Category = "Ship") double FsdProgress = 0;
@@ -155,6 +158,12 @@ protected:
 	void OnDock();
 	void OnRover();
 	void OnToggleLights() { SetLandingLights(!bLandingLights); }
+	void OnLoadCargo();
+	void OnBuildToggle();
+	void OnBuildPlace();
+	void OnBuildRotL();
+	void OnBuildRotR();
+	void OnBuildSlot1(); void OnBuildSlot2(); void OnBuildSlot3(); void OnBuildSlot4(); void OnBuildSlot5(); void OnBuildSlot6();
 	void OnCycleTarget() { CycleTarget(); }
 	void OnMouseLock();
 	void OnToggleAutopilot() { ToggleAutopilot(); }
