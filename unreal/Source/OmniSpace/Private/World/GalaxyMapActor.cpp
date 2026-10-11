@@ -68,7 +68,7 @@ void AGalaxyMapActor::SetFocus(const FStarDescriptor& Focus)
 		const double Sz = MapStarSize(S.Cls) * 0.09; // sphere mesh is 1 m across
 		Xf.Add(FTransform(FQuat::Identity, MapPos(S.Pos), FVector(Sz)));
 	}
-	Stars->AddInstances(Xf, false, false);
+	Stars->AddInstances(Xf, false, true);
 	for (int32 i = 0; i < LocalStars.Num(); i++)
 	{
 		const FLinearColor C = LocalStars[i].LinearColor();
@@ -105,7 +105,7 @@ void AGalaxyMapActor::BuildCloud()
 		// galactic coordinates are absolute; MapPos wants ly relative to the focus
 		Xf.Add(FTransform(FQuat::Identity, MapPos(FVector(X, Y, Z)), FVector(1.8, 1.8, 1.0)));
 	}
-	Cloud->AddInstances(Xf, false, false);
+	Cloud->AddInstances(Xf, false, true);
 	Cloud->MarkRenderStateDirty();
 	UE_LOG(LogOmniSpace, Log, TEXT("[map] galaxy cloud: %d points"), Xf.Num());
 }
