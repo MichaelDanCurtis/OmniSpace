@@ -665,7 +665,7 @@ return (OP - WP) * (1.0 - s);
 
 def build_mapcloud(mat):
     """Galaxy-map overview point: faint additive blue-white sprite."""
-    color = vec_param(mat, "Color", (0.05, 0.07, 0.12, 1), -500, 0)
+    color = vec_param(mat, "Color", (0.5, 0.62, 0.95, 1), -500, 0)
     mat.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_UNLIT)
     mat.set_editor_property("blend_mode", unreal.BlendMode.BLEND_ADDITIVE)
     mat.set_editor_property("two_sided", True)

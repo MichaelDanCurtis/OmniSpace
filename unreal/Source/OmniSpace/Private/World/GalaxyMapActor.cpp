@@ -168,7 +168,7 @@ void AGalaxyMapActor::SetGalaxyView(bool bOn)
 	{
 		// pull back to see the whole disc, centred on the galaxy's core
 		WantTargetLy = FVector(0, 0, 0);
-		WantDist = 160000 * LyToCm; WantPitch = -62; WantYaw = -90;
+		WantDist = 125000 * LyToCm; WantPitch = -62; WantYaw = -90;
 	}
 	else
 	{
