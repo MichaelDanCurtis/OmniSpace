@@ -16,6 +16,7 @@
 #include "Ship/RoverPawn.h"
 #include "Core/CommanderSubsystem.h"
 #include "Data/OutpostData.h"
+#include "World/GalaxyMapActor.h"
 
 namespace
 {
@@ -356,6 +357,178 @@ void AOmniHUD::DrawSystemMap(AShipPawn* Ship, UFont* Font, float W, float H, flo
 	}
 }
 
+void AOmniHUD::DrawGalaxyMap3D(AShipPawn* Ship, AOmniGameMode* GM, UFont* Font, float W, float H, float U)
+{
+	AGalaxyMapActor* Map = GM->MapActor;
+	UGalaxySubsystem* Galaxy = GetGameInstance() ? GetGameInstance()->GetSubsystem<UGalaxySubsystem>() : nullptr;
+	UForgeSubsystem* Forge = GetGameInstance() ? GetGameInstance()->GetSubsystem<UForgeSubsystem>() : nullptr;
+	UCommanderSubsystem* Co = Ship->Cmdr();
+	APlayerController* PC = GetOwningPlayerController();
+	if (!Map || !Galaxy || !PC) return;
+	const FStarDescriptor& Cur = GM->CurrentStar;
+	const bool bGalaxy = Map->IsGalaxyView();
+	auto Proj = [&](const FVector& WorldCm, FVector2D& Out) -> bool { return PC->ProjectWorldLocationToScreen(WorldCm, Out, false) && Out.X > -2000 && Out.X < W + 2000 && Out.Y > -2000 && Out.Y < H + 2000; };
+	auto Seg = [&](const FVector& A, const FVector& B, const FLinearColor& C, float T) { FVector2D PA, PB; if (Proj(A, PA) && Proj(B, PB)) DrawLine(PA.X, PA.Y, PB.X, PB.Y, C, T); };
+	const FVector FocusLy = Map->FocusLy();
+	const double PlaneY = Cur.Pos.Y;  // the grid sits at the current star's height
+	float MouseX = -1, MouseY = -1;
+	PC->GetMousePosition(MouseX, MouseY);
+
+	if (!bGalaxy)
+	{
+		// polar grid on the galactic plane around the focus
+		const FLinearColor GridC(0.11f, 0.21f, 0.31f, 0.9f), GridD(0.07f, 0.13f, 0.22f, 0.9f);
+		for (int32 r = 10; r <= 80; r += 10)
+		{
+			const int32 N = 72;
+			for (int32 i = 0; i < N; i++)
+			{
+				const double A0 = i * 2 * PI / N, A1 = (i + 1) * 2 * PI / N;
+				Seg(Map->MapPos(FVector(FocusLy.X + r * FMath::Cos(A0), PlaneY, FocusLy.Z + r * FMath::Sin(A0))), Map->MapPos(FVector(FocusLy.X + r * FMath::Cos(A1), PlaneY, FocusLy.Z + r * FMath::Sin(A1))), r % 40 == 0 ? GridC : GridD, 1.f);
+			}
+		}
+		for (int32 i = 0; i < 12; i++)
+		{
+			const double A = i * 2 * PI / 12;
+			Seg(Map->MapPos(FVector(FocusLy.X, PlaneY, FocusLy.Z)), Map->MapPos(FVector(FocusLy.X + 80 * FMath::Cos(A), PlaneY, FocusLy.Z + 80 * FMath::Sin(A))), GridD, 1.f);
+		}
+		// jump range ring around the current star
+		{
+			const int32 N = 96; const double R = Ship->JumpRangeLy;
+			for (int32 i = 0; i < N; i++)
+			{
+				const double A0 = i * 2 * PI / N, A1 = (i + 1) * 2 * PI / N;
+				Seg(Map->MapPos(FVector(Cur.Pos.X + R * FMath::Cos(A0), PlaneY, Cur.Pos.Z + R * FMath::Sin(A0))), Map->MapPos(FVector(Cur.Pos.X + R * FMath::Cos(A1), PlaneY, Cur.Pos.Z + R * FMath::Sin(A1))), FLinearColor(0.35f, 0.69f, 1.f, 0.6f), 1.5f);
+			}
+		}
+	}
+	// route
+	{
+		FVector PrevLy = Cur.Pos;
+		for (const FString& Hop : Ship->Route)
+		{
+			FStarDescriptor HS;
+			if (!Galaxy->GetStar(Hop, HS)) break;
+			Seg(Map->MapPos(PrevLy), Map->MapPos(HS.Pos), FLinearColor(0.78f, 0.56f, 1.f, 0.9f), 2.f);
+			PrevLy = HS.Pos;
+		}
+	}
+	// stars: stalks, rings, hover, labels
+	FString Hover; float HoverD = 14 * U;
+	const FVector TargetLy = Map->TargetLy();
+	struct FLabel { FString Text; FVector2D P; FLinearColor C; double Pri; };
+	TArray<FLabel> Labels;
+	for (const FStarDescriptor& S : Map->Local())
+	{
+		const FVector WP = Map->MapPos(S.Pos);
+		FVector2D SP;
+		if (!Proj(WP, SP)) continue;
+		const bool bCur = S.Id == Cur.Id, bSel = S.Id == Ship->MapSelectedId, bTarget = S.Id == Ship->JumpTargetId, bDest = S.Id == Ship->RouteDestId;
+		const bool bOnRoute = Ship->Route.Contains(S.Id);
+		const double DistF = FVector::Dist(S.Pos, FocusLy);
+		if (!bGalaxy)
+		{
+			if (DistF < 30.0) Seg(WP, Map->MapPos(FVector(S.Pos.X, PlaneY, S.Pos.Z)), FLinearColor(0.14f, 0.28f, 0.42f, 0.5f), 1.f);
+			const float MD = FVector2D::Distance(FVector2D(MouseX, MouseY), SP);
+			if (MD < HoverD) { HoverD = MD; Hover = S.Id; }
+			const bool bVisited = Co && Co->S.Visited.Contains(S.Id);
+			FStarSystemData Tmp;
+			const bool bCharted = !bVisited && Forge && Forge->GetCached(S.Id, Tmp);
+			if (bVisited && !bCur) Circle(SP.X, SP.Y, 7 * U, FLinearColor(0.42f, 1.f, 0.7f, 0.7f), 14, 1.f);
+			else if (bCharted && !bCur) Circle(SP.X, SP.Y, 7 * U, FLinearColor(0.78f, 0.56f, 1.f, 0.7f), 14, 1.f);
+		}
+		if (bCur) { Circle(SP.X, SP.Y, 12 * U, FLinearColor(0.42f, 1.f, 0.7f), 24, 2.f); Circle(SP.X, SP.Y, 16 * U, FLinearColor(0.42f, 1.f, 0.7f, 0.35f), 24, 1.f); }
+		if (bSel) Circle(SP.X, SP.Y, 13 * U, FLinearColor(1.f, 0.7f, 0.28f), 24, 2.f);
+		if (bTarget) Diamond(SP.X, SP.Y, 11 * U, HudGreen, 1.5f);
+		if (bDest) Bracket(SP.X, SP.Y, 12 * U, HudAmber, 1.5f);
+		const double DistT = FVector::Dist(S.Pos, TargetLy);
+		if (bCur || bSel || bTarget || bDest || bOnRoute || (!bGalaxy && DistT < 16.0))
+		{
+			const double Pri = bCur || bSel ? -1 : bTarget || bDest || bOnRoute ? 0 : DistT;
+			const FLinearColor LC = bCur ? FLinearColor(0.42f, 1.f, 0.7f) : bSel ? FLinearColor(1.f, 0.7f, 0.28f) : bOnRoute || bTarget ? FLinearColor(0.85f, 0.7f, 1.f) : FLinearColor(0.8f, 0.86f, 0.95f, 0.85f);
+			Labels.Add({ FString::Printf(TEXT("%s  %.1f"), *S.Name, FVector::Dist(S.Pos, Cur.Pos)), SP, LC, Pri });
+		}
+	}
+	Labels.Sort([](const FLabel& A, const FLabel& B) { return A.Pri < B.Pri; });
+	for (int32 i = 0; i < FMath::Min(40, Labels.Num()); i++) DrawText(Labels[i].Text, Labels[i].C, Labels[i].P.X + 9 * U, Labels[i].P.Y - 7 * U, Font, 0.82f * U);
+	Ship->MapHoverId = Hover;
+	if (!Hover.IsEmpty() && Hover != Ship->MapSelectedId)
+	{
+		FStarDescriptor HS; FVector2D HP;
+		if (Galaxy->GetStar(Hover, HS) && Proj(Map->MapPos(HS.Pos), HP))
+		{
+			Circle(HP.X, HP.Y, 11 * U, FLinearColor(1.f, 1.f, 1.f, 0.55f), 20, 1.f);
+			DrawText(FString::Printf(TEXT("%s  %.1f ly"), *HS.Name, FVector::Dist(HS.Pos, Cur.Pos)), HudWhite, HP.X + 12 * U, HP.Y + 10 * U, Font, 0.85f * U);
+		}
+	}
+
+	// ---- left panel
+	{
+		const float PX = 24 * U; float Y = 20 * U;
+		DrawRect(FLinearColor(0.02f, 0.06f, 0.1f, 0.7f), PX - 10 * U, Y - 8 * U, 320 * U, 300 * U);
+		DrawText(TEXT("GALAXY MAP"), HudWhite, PX, Y, Font, 1.4f * U); Y += 28 * U;
+		DrawText(TEXT("drag to orbit   wheel to zoom   click a star"), HudGrey, PX, Y, Font, 0.8f * U); Y += 16 * U;
+		DrawText(TEXT("N jump target / route   B plot   C centre   V galaxy   M close"), HudGrey, PX, Y, Font, 0.8f * U); Y += 26 * U;
+		DrawText(TEXT("FRAME SHIFT DRIVE"), HudAmber, PX, Y, Font, 0.9f * U); Y += 18 * U;
+		DrawText(FString::Printf(TEXT("jump range %.1f ly"), Ship->JumpRangeLy), HudCyanDim, PX, Y, Font, 0.85f * U); Y += 16 * U;
+		DrawText(FString::Printf(TEXT("fuel %.1f / 16 t"), Ship->Fuel), HudCyanDim, PX, Y, Font, 0.85f * U); Bar(PX + 120 * U, Y + 4 * U, 150 * U, 6 * U, Ship->Fuel / 16.0, HudAmber); Y += 26 * U;
+		DrawText(TEXT("ROUTE"), HudAmber, PX, Y, Font, 0.9f * U); Y += 18 * U;
+		if (Ship->Route.Num() == 0) { DrawText(TEXT("none plotted"), HudGrey, PX, Y, Font, 0.85f * U); Y += 16 * U; }
+		int32 Shown = 0;
+		for (const FString& Hop : Ship->Route)
+		{
+			if (Shown++ >= 6) { DrawText(FString::Printf(TEXT("... %d more"), Ship->Route.Num() - 6), HudGrey, PX, Y, Font, 0.8f * U); Y += 16 * U; break; }
+			FStarDescriptor HS; if (!Galaxy->GetStar(Hop, HS)) continue;
+			DrawText(FString::Printf(TEXT("%d  %s"), Shown, *HS.Name), Shown == 1 ? HudGreen : HudCyanDim, PX, Y, Font, 0.85f * U); Y += 16 * U;
+		}
+		Y += 10 * U;
+		DrawText(TEXT("green ring: here   amber: selected   diamond: next jump   violet: charted / route   stalks: height off the plane"), HudGrey, PX, Y, Font, 0.72f * U);
+	}
+	// ---- right panel: the selected star
+	FStarDescriptor Sel;
+	if (Galaxy->GetStar(Ship->MapSelectedId.IsEmpty() ? Cur.Id : Ship->MapSelectedId, Sel))
+	{
+		const float PW = 300 * U, IX = W - PW - 14 * U; float IY = 20 * U;
+		DrawRect(FLinearColor(0.02f, 0.06f, 0.1f, 0.7f), IX - 10 * U, IY - 8 * U, PW, 360 * U);
+		const double DistLy = FVector::Dist(Sel.Pos, Cur.Pos);
+		const bool bInRange = DistLy <= Ship->JumpRangeLy;
+		DrawText(Sel.Name.ToUpper(), HudWhite, IX, IY, Font, 1.3f * U); IY += 26 * U;
+		DrawText(UGalaxySubsystem::ClassLabel(Sel.Cls), HudAmber, IX, IY, Font, 0.9f * U); IY += 22 * U;
+		auto Line = [&](const FString& T, const FLinearColor& Col) { DrawText(T, Col, IX, IY, Font, 0.85f * U); IY += 18 * U; };
+		if (Sel.Id == Cur.Id) Line(TEXT("current system"), HudCyan);
+		else Line(FString::Printf(TEXT("%.1f ly  %s"), DistLy, bInRange ? TEXT("- in range") : TEXT("- needs a route")), bInRange ? HudGreen : HudCyanDim);
+		Line(FString::Printf(TEXT("%.0f K   %.2f L   %.2f R"), Sel.Temperature, Sel.Luminosity, Sel.RadiusSolar), HudCyanDim);
+		Line(UGalaxySubsystem::IsScoopable(Sel.Cls) ? TEXT("fuel scoopable") : TEXT("not scoopable"), UGalaxySubsystem::IsScoopable(Sel.Cls) ? HudGreen : HudGrey);
+		Line(Sel.Region, HudCyanDim);
+		Line(Sel.Settlement > 0.8 ? TEXT("Core worlds") : Sel.Settlement > 0.55 ? TEXT("Inner frontier") : Sel.Settlement > 0.3 ? TEXT("Frontier") : TEXT("Deep space"), HudCyanDim);
+		if (bInRange && Sel.Id != Cur.Id) Line(FString::Printf(TEXT("jump fuel %.1f t"), 0.35 + 3.4 * FMath::Square(DistLy / Ship->JumpRangeLy)), HudCyanDim);
+		IY += 8 * U;
+		FStarSystemData SysD;
+		if (Forge && Forge->GetCached(Sel.Id, SysD))
+		{
+			Line(SysD.Source == TEXT("ai") ? TEXT("CHARTED BY THE STELLAR FORGE") : TEXT("SURVEYED"), FLinearColor(0.78f, 0.56f, 1.f));
+			Line(FString::Printf(TEXT("%d bodies   %d stations"), SysD.Bodies.Num(), SysD.Stations.Num()), HudCyanDim);
+			Line(FString::Printf(TEXT("%s   %s"), *SysD.Profile.Faction, *SysD.Profile.Economy), HudCyanDim);
+			FString Desc = SysD.Profile.Description; int32 Lines = 0;
+			while (!Desc.IsEmpty() && Lines < 5) { int32 Cut = FMath::Min(44, Desc.Len()); if (Desc.Len() > 44) { int32 Sp; if (Desc.Left(44).FindLastChar(' ', Sp) && Sp > 20) Cut = Sp; } Line(Desc.Left(Cut).TrimStartAndEnd(), HudGrey); Desc = Desc.Mid(Cut); Lines++; }
+		}
+		else Line(TEXT("UNCHARTED"), HudGrey);
+		if (Co && Co->S.Visited.Contains(Sel.Id)) Line(TEXT("visited"), HudGreen);
+		IY += 10 * U;
+		if (Sel.Id != Cur.Id) Line(bInRange ? TEXT("N  set as jump target") : TEXT("N / B  plot a route here"), HudAmber);
+		Line(TEXT("C  centre the view here"), HudAmber);
+		if (FVector::Dist(Sel.Pos, FocusLy) > 48.0) Line(TEXT("Enter  load stars around here"), HudAmber);
+	}
+	// bottom: next jump
+	if (!Ship->JumpTargetId.IsEmpty())
+		DrawText(FString::Printf(TEXT("NEXT JUMP  %s  %.1f ly  %s%s"), *Ship->JumpTarget.Name.ToUpper(), Ship->JumpDistanceLy(), *UGalaxySubsystem::ClassLabel(Ship->JumpTarget.Cls), Ship->Route.Num() > 1 ? *FString::Printf(TEXT("  (%d jumps to go)"), Ship->Route.Num()) : TEXT("")), HudGreen, 24 * U, H - 40 * U, Font, 1.0f * U);
+	if (bGalaxy) DrawText(TEXT("GALAXY VIEW  -  V returns to the local field"), HudAmber, W / 2 - 160 * U, H - 40 * U, Font, 0.95f * U);
+	// messages
+	const int32 N = FMath::Min(3, Ship->Messages.Num());
+	float MY = H - 20 * U - 19 * U * N;
+	for (int32 i = Ship->Messages.Num() - N; i < Ship->Messages.Num(); i++) { DrawText(Ship->Messages[i], FLinearColor(0.85f, 0.92f, 1.f, 0.9f), W - 420 * U, MY, Font, 0.85f * U); MY += 19 * U; }
+}
+
 void AOmniHUD::Bar(float X, float Y, float W, float H, double Frac, const FLinearColor& C)
 {
 	DrawRect(FLinearColor(C.R, C.G, C.B, 0.12f), X, Y, W, H);
@@ -413,6 +586,7 @@ void AOmniHUD::DrawHUD()
 	ASystemDirector* D = Ship->GetDirector();
 	AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode());
 	const bool bHyper = Ship->Mode == EFlightMode::Hyperspace;
+	if (Ship->bShowMap && GM && GM->MapActor && !bHyper) { DrawGalaxyMap3D(Ship, GM, Font, W, H, U); return; }
 	const FQuat Q = Ship->GetActorQuat();
 
 	// ---------------------------------------------------------------- brand + location
@@ -590,127 +764,6 @@ void AOmniHUD::DrawHUD()
 
 	// ---------------------------------------------------------------- station services (docked)
 	if (Ship->Mode == EFlightMode::Docked && Ship->bStationMenu && !Ship->bShowMap && !Ship->bShowSystemMap && !Ship->bShowHelp) DrawStationMenu(Ship, Font, W, H, U);
-
-	// ---------------------------------------------------------------- galaxy map overlay (M)
-	if (Ship->bShowMap && GM && !bHyper)
-	{
-		UGalaxySubsystem* Galaxy = GetGameInstance() ? GetGameInstance()->GetSubsystem<UGalaxySubsystem>() : nullptr;
-		UForgeSubsystem* Forge = GetGameInstance() ? GetGameInstance()->GetSubsystem<UForgeSubsystem>() : nullptr;
-		UCommanderSubsystem* Co = Ship->Cmdr();
-		if (Galaxy)
-		{
-			const float MW = FMath::Min(W * 0.86f, 1300 * U), MH = FMath::Min(H * 0.78f, 700 * U);
-			const float MX = CX - MW / 2, MY = H * 0.47f - MH / 2;
-			const float PanelW = 300 * U;             // info panel on the right
-			DrawRect(FLinearColor(0.02f, 0.06f, 0.1f, 0.9f), MX, MY, MW, MH);
-			DrawLine(MX, MY, MX + MW, MY, HudCyan, 1.5f); DrawLine(MX, MY + MH, MX + MW, MY + MH, HudCyan, 1.5f);
-			DrawLine(MX + MW - PanelW, MY, MX + MW - PanelW, MY + MH, FLinearColor(HudCyan.R, HudCyan.G, HudCyan.B, 0.3f), 1.f);
-			DrawText(TEXT("GALAXY MAP"), HudWhite, MX + 16 * U, MY + 12 * U, Font, 1.4f * U);
-			DrawText(TEXT("click a star to select   N jump target / route to it   B plot route   wheel zoom   H jump   M close"), HudGrey, MX + 16 * U, MY + 36 * U, Font, 0.85f * U);
-			const FStarDescriptor& Cur = GM->CurrentStar;
-			const double RangeLy = Ship->MapRangeLy;
-			const float MapW = MW - PanelW;
-			const float Scale = (FMath::Min(MapW, MH) * 0.46f) / static_cast<float>(RangeLy);
-			const float OX = MX + MapW * 0.5f, OY = MY + MH * 0.54f;
-			Circle(OX, OY, static_cast<float>(Ship->JumpRangeLy) * Scale, FLinearColor(HudCyan.R, HudCyan.G, HudCyan.B, 0.45f), 48, 1.f);
-			for (double R = 10; R < RangeLy; R += 10) Circle(OX, OY, static_cast<float>(R) * Scale, FLinearColor(HudCyan.R, HudCyan.G, HudCyan.B, 0.08f), 48, 1.f);
-			DrawText(FString::Printf(TEXT("%.0f ly"), Ship->JumpRangeLy), HudCyanDim, OX + static_cast<float>(Ship->JumpRangeLy) * Scale + 4 * U, OY - 6 * U, Font, 0.8f * U);
-			TArray<FStarDescriptor> Stars = Galaxy->StarsNear(Cur.Pos, RangeLy);
-			// route lines
-			FVector Prev = Cur.Pos;
-			for (const FString& Hop : Ship->Route)
-			{
-				FStarDescriptor HS;
-				if (!Galaxy->GetStar(Hop, HS)) break;
-				DrawLine(OX + (Prev.X - Cur.Pos.X) * Scale, OY - (Prev.Z - Cur.Pos.Z) * Scale, OX + (HS.Pos.X - Cur.Pos.X) * Scale, OY - (HS.Pos.Z - Cur.Pos.Z) * Scale, HudAmber, 1.5f);
-				Prev = HS.Pos;
-			}
-			// mouse: nearest star within reach of the cursor
-			float MouseX = -1, MouseY = -1;
-			if (APlayerController* PC = GetOwningPlayerController()) PC->GetMousePosition(MouseX, MouseY);
-			FString Hover; float HoverD = 14 * U;
-			const bool bDense = Stars.Num() > 260;
-			for (const FStarDescriptor& S : Stars)
-			{
-				const float PX = OX + static_cast<float>(S.Pos.X - Cur.Pos.X) * Scale;
-				const float PY = OY - static_cast<float>(S.Pos.Z - Cur.Pos.Z) * Scale;
-				const float Dy = static_cast<float>(S.Pos.Y - Cur.Pos.Y) * Scale * 0.3f;
-				if (PX < MX + 4 || PX > MX + MapW - 4 || PY - Dy < MY + 50 * U || PY - Dy > MY + MH - 30 * U) continue;
-				const double DistLy = FVector::Dist(S.Pos, Cur.Pos);
-				const bool bCur = S.Id == Cur.Id;
-				const bool bTarget = S.Id == Ship->JumpTargetId;
-				const bool bDest = S.Id == Ship->RouteDestId;
-				const bool bSel = S.Id == Ship->MapSelectedId;
-				const bool bVisited = Co && Co->S.Visited.Contains(S.Id);
-				FStarSystemData Tmp;
-				const bool bCharted = Forge && Forge->GetCached(S.Id, Tmp);
-				const float MD = FVector2D::Distance(FVector2D(MouseX, MouseY), FVector2D(PX, PY - Dy));
-				if (MD < HoverD) { HoverD = MD; Hover = S.Id; }
-				FLinearColor C = S.LinearColor(); C.A = DistLy <= Ship->JumpRangeLy || bCur || bTarget || bDest || bSel ? 1.f : 0.4f;
-				if (FMath::Abs(Dy) > 1.f && !bDense) DrawLine(PX, PY, PX, PY - Dy, FLinearColor(C.R, C.G, C.B, 0.2f), 1.f);
-				const float Sz = (bCur ? 5.f : 2.f + static_cast<float>(FMath::Clamp(S.RadiusSolar, 0.2, 2.0))) * U;
-				DrawRect(C, PX - Sz / 2, PY - Dy - Sz / 2, Sz, Sz);
-				if (bCur) Circle(PX, PY - Dy, 10 * U, HudCyan, 16, 1.5f);
-				if (bTarget) Diamond(PX, PY - Dy, 10 * U, HudGreen, 1.5f);
-				if (bDest) Bracket(PX, PY - Dy, 10 * U, HudAmber, 1.5f);
-				if (bSel) Circle(PX, PY - Dy, 13 * U, HudAmber, 20, 1.5f);
-				if (bVisited && !bCur) Circle(PX, PY - Dy, 6 * U, FLinearColor(HudGreen.R, HudGreen.G, HudGreen.B, 0.6f), 10, 1.f);
-				else if (bCharted && !bCur) Circle(PX, PY - Dy, 6 * U, FLinearColor(0.7f, 0.5f, 1.f, 0.6f), 10, 1.f);
-				if (bCur || bTarget || bDest || bSel || (!bDense && (DistLy <= Ship->JumpRangeLy || S.Settlement > 0.8)))
-					DrawText(FString::Printf(TEXT("%s  %.1f"), *S.Name, DistLy), bCur ? HudCyan : (bTarget ? HudGreen : FLinearColor(0.85f, 0.9f, 1.f, C.A)), PX + 8 * U, PY - Dy - 6 * U, Font, 0.8f * U);
-			}
-			Ship->MapHoverId = Hover;
-			if (!Hover.IsEmpty() && Hover != Ship->MapSelectedId)
-			{
-				FStarDescriptor HS;
-				if (Galaxy->GetStar(Hover, HS))
-				{
-					const float PX = OX + static_cast<float>(HS.Pos.X - Cur.Pos.X) * Scale, PY = OY - static_cast<float>(HS.Pos.Z - Cur.Pos.Z) * Scale - static_cast<float>(HS.Pos.Y - Cur.Pos.Y) * Scale * 0.3f;
-					Circle(PX, PY, 12 * U, FLinearColor(1.f, 1.f, 1.f, 0.5f), 20, 1.f);
-					DrawText(FString::Printf(TEXT("%s  %.1f ly"), *HS.Name, FVector::Dist(HS.Pos, Cur.Pos)), HudWhite, PX + 14 * U, PY + 8 * U, Font, 0.85f * U);
-				}
-			}
-			// info panel: the selected star (or the current one)
-			FStarDescriptor Sel;
-			const bool bHaveSel = Galaxy->GetStar(Ship->MapSelectedId.IsEmpty() ? Cur.Id : Ship->MapSelectedId, Sel);
-			if (bHaveSel)
-			{
-				float IX = MX + MW - PanelW + 16 * U, IY = MY + 14 * U;
-				const double DistLy = FVector::Dist(Sel.Pos, Cur.Pos);
-				const bool bInRange = DistLy <= Ship->JumpRangeLy;
-				DrawText(Sel.Name.ToUpper(), HudWhite, IX, IY, Font, 1.3f * U); IY += 26 * U;
-				DrawText(UGalaxySubsystem::ClassLabel(Sel.Cls), HudAmber, IX, IY, Font, 0.9f * U); IY += 22 * U;
-				auto Line = [&](const FString& T, const FLinearColor& Col) { DrawText(T, Col, IX, IY, Font, 0.85f * U); IY += 18 * U; };
-				if (Sel.Id == Cur.Id) Line(TEXT("current system"), HudCyan);
-				else Line(FString::Printf(TEXT("%.1f ly  %s"), DistLy, bInRange ? TEXT("- in range") : TEXT("- needs a route")), bInRange ? HudGreen : HudCyanDim);
-				Line(FString::Printf(TEXT("%.0f K   %.2f L   %.2f R"), Sel.Temperature, Sel.Luminosity, Sel.RadiusSolar), HudCyanDim);
-				Line(UGalaxySubsystem::IsScoopable(Sel.Cls) ? TEXT("fuel scoopable") : TEXT("not scoopable"), UGalaxySubsystem::IsScoopable(Sel.Cls) ? HudGreen : HudGrey);
-				Line(Sel.Region, HudCyanDim);
-				Line(Sel.Settlement > 0.8 ? TEXT("Core worlds") : Sel.Settlement > 0.55 ? TEXT("Inner frontier") : Sel.Settlement > 0.3 ? TEXT("Frontier") : TEXT("Deep space"), HudCyanDim);
-				if (bInRange && Sel.Id != Cur.Id) Line(FString::Printf(TEXT("jump fuel %.1f t"), 0.35 + 3.4 * FMath::Square(DistLy / Ship->JumpRangeLy)), HudCyanDim);
-				IY += 8 * U;
-				FStarSystemData SysD;
-				if (Forge && Forge->GetCached(Sel.Id, SysD))
-				{
-					Line(SysD.Source == TEXT("ai") ? TEXT("CHARTED BY THE STELLAR FORGE") : TEXT("SURVEYED"), FLinearColor(0.7f, 0.5f, 1.f));
-					Line(FString::Printf(TEXT("%d bodies   %d stations"), SysD.Bodies.Num(), SysD.Stations.Num()), HudCyanDim);
-					Line(FString::Printf(TEXT("%s   %s"), *SysD.Profile.Faction, *SysD.Profile.Economy), HudCyanDim);
-					// wrap the description roughly
-					FString Desc = SysD.Profile.Description; int32 Lines = 0;
-					while (!Desc.IsEmpty() && Lines < 6) { int32 Cut = FMath::Min(44, Desc.Len()); if (Desc.Len() > 44) { int32 Sp; if (Desc.Left(44).FindLastChar(' ', Sp) && Sp > 20) Cut = Sp; } Line(Desc.Left(Cut).TrimStartAndEnd(), HudGrey); Desc = Desc.Mid(Cut); Lines++; }
-				}
-				else Line(TEXT("UNCHARTED"), HudGrey);
-				if (Co && Co->S.Visited.Contains(Sel.Id)) Line(TEXT("visited"), HudGreen);
-				IY += 10 * U;
-				if (Sel.Id != Cur.Id) Line(bInRange ? TEXT("N  set as jump target") : TEXT("N / B  plot a route here"), HudAmber);
-			}
-			// legend + next jump
-			float LY = MY + MH - 22 * U;
-			DrawText(TEXT("ring: current   diamond: next jump   bracket: route end   amber ring: selected   green dot: visited   violet dot: charted"), HudGrey, MX + 16 * U, LY, Font, 0.8f * U);
-			if (!Ship->JumpTargetId.IsEmpty())
-				DrawText(FString::Printf(TEXT("NEXT JUMP  %s  %.1f ly  %s%s"), *Ship->JumpTarget.Name.ToUpper(), Ship->JumpDistanceLy(), *UGalaxySubsystem::ClassLabel(Ship->JumpTarget.Cls), Ship->Route.Num() > 1 ? *FString::Printf(TEXT("  (%d jumps to go)"), Ship->Route.Num()) : TEXT("")), HudGreen, MX + 16 * U, LY - 22 * U, Font, 1.0f * U);
-		}
-	}
 
 	// ---------------------------------------------------------------- help (F1)
 	if (Ship->bShowHelp && !bHyper)

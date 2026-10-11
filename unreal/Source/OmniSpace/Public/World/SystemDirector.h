@@ -60,6 +60,7 @@ public:
 	class ADirectionalLight* GetSunLight() const { return SunLight; }
 	/** Frame-shift streak on the sky dome. */
 	void SetSkyWarp(float Warp, const FVector& Dir, const FVector& Up, float Flow);
+	void SetSkyHidden(bool bHidden);
 	/** Debug: toggle visibility of the sky dome / star. */
 	void DebugToggle(int32 What);
 

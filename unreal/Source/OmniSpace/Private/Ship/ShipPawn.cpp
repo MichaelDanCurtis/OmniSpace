@@ -4,6 +4,7 @@
 #include "World/SurfaceTile.h"
 #include "Core/OmniGameMode.h"
 #include "Core/CommanderSubsystem.h"
+#include "World/GalaxyMapActor.h"
 #include "Galaxy/GalaxySubsystem.h"
 #include "World/OmniAssets.h"
 #include "Components/StaticMeshComponent.h"
@@ -172,8 +173,10 @@ void AShipPawn::SetupPlayerInputComponent(UInputComponent* IC)
 	IC->BindKey(EKeys::L, IE_Pressed, this, &AShipPawn::OnDock);
 	IC->BindKey(EKeys::T, IE_Pressed, this, &AShipPawn::OnCycleTarget);
 	IC->BindKey(EKeys::LeftMouseButton, IE_Pressed, this, &AShipPawn::OnMouseLock);
+	IC->BindKey(EKeys::LeftMouseButton, IE_Released, this, &AShipPawn::OnMouseRelease);
 	IC->BindKey(EKeys::I, IE_Pressed, this, &AShipPawn::OnToggleSystemMap);
 	IC->BindKey(EKeys::F1, IE_Pressed, this, &AShipPawn::OnToggleHelp);
+	IC->BindKey(EKeys::V, IE_Pressed, this, &AShipPawn::OnMapGalaxyView);
 	IC->BindKey(EKeys::Slash, IE_Pressed, this, &AShipPawn::OnToggleHelp);
 	IC->BindKey(EKeys::MouseScrollUp, IE_Pressed, this, &AShipPawn::OnMapZoomIn);
 	IC->BindKey(EKeys::MouseScrollDown, IE_Pressed, this, &AShipPawn::OnMapZoomOut);
@@ -208,16 +211,35 @@ void AShipPawn::SetupPlayerInputComponent(UInputComponent* IC)
 
 void AShipPawn::OnMouseX(float V)
 {
+	if (bShowMap) { if (bMapDrag && MapActor()) { MapActor()->Orbit(-V * 0.35, 0); MapDragMoved += FMath::Abs(V); } return; }
+	if (bShowSystemMap) return;
 	Stick.X = Clamp(Stick.X + V * 0.012 * MouseSensitivity, -1, 1);
 }
 void AShipPawn::OnMouseY(float V)
 {
+	if (bShowMap) { if (bMapDrag && MapActor()) { MapActor()->Orbit(0, V * 0.35); MapDragMoved += FMath::Abs(V); } return; }
+	if (bShowSystemMap) return;
 	// Unreal MouseY is positive when moving up; TS used movementY (down positive) with pitch = -stick.y
 	Stick.Y = Clamp(Stick.Y - V * 0.012 * MouseSensitivity * (bInvertY ? -1 : 1), -1, 1);
 }
+AGalaxyMapActor* AShipPawn::MapActor() const
+{
+	AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode());
+	return GM ? GM->MapActor : nullptr;
+}
+void AShipPawn::OnMapZoomIn() { if (bShowMap && MapActor()) MapActor()->Zoom(0.8); }
+void AShipPawn::OnMapZoomOut() { if (bShowMap && MapActor()) MapActor()->Zoom(1.25); }
+void AShipPawn::OnMouseRelease()
+{
+	if (!bShowMap) return;
+	const bool bClick = bMapDrag && MapDragMoved < 6.0;
+	bMapDrag = false;
+	if (bClick) MapSelectHovered();
+}
 void AShipPawn::OnMouseLock()
 {
-	if (bShowMap || bShowSystemMap) { MapSelectHovered(); return; }
+	if (bShowMap) { bMapDrag = true; MapDragMoved = 0; return; }
+	if (bShowSystemMap) { MapSelectHovered(); return; }
 	if (APlayerController* PC = Cast<APlayerController>(GetController()))
 	{
 		FInputModeGameOnly M;
@@ -228,8 +250,12 @@ void AShipPawn::OnMouseLock()
 
 void AShipPawn::SetMapOpen(bool bGalaxy, bool bSystem)
 {
+	AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode());
+	if (bGalaxy && !bShowMap && GM) GM->OpenGalaxyMap();
+	if (!bGalaxy && bShowMap && GM) GM->CloseGalaxyMap();
 	bShowMap = bGalaxy;
 	bShowSystemMap = bSystem;
+	bMapDrag = false;
 	Stick = FVector2D::ZeroVector;
 	if (APlayerController* PC = Cast<APlayerController>(GetController()))
 	{
@@ -267,7 +293,22 @@ void AShipPawn::MapSelectHovered()
 	}
 }
 void AShipPawn::OnFullStop() { Throttle = 0; LastThrottleInput = Time; }
-void AShipPawn::OnCruiseThrottle() { Throttle = 0.75; LastThrottleInput = Time; }
+void AShipPawn::OnCruiseThrottle()
+{
+	if (bShowMap && MapActor())
+	{
+		UGalaxySubsystem* Galaxy = GetGameInstance()->GetSubsystem<UGalaxySubsystem>();
+		FStarDescriptor S;
+		if (Galaxy && !MapSelectedId.IsEmpty() && Galaxy->GetStar(MapSelectedId, S)) MapActor()->CenterOn(S.Pos);
+		else if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode())) MapActor()->CenterOn(GM->CurrentStar.Pos);
+		return;
+	}
+	Throttle = 0.75; LastThrottleInput = Time;
+}
+void AShipPawn::OnMapGalaxyView()
+{
+	if (bShowMap && MapActor()) MapActor()->SetGalaxyView(!MapActor()->IsGalaxyView());
+}
 void AShipPawn::OnToggleFA()
 {
 	bFlightAssist = !bFlightAssist;
@@ -806,7 +847,17 @@ void AShipPawn::MenuAction(int32 Which)
 }
 
 void AShipPawn::OnBuildToggle() { if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode())) GM->ToggleBuildMode(); }
-void AShipPawn::OnBuildPlace() { if (Mode == EFlightMode::Docked) { MenuAction(0); return; } if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode())) GM->BuildPlace(); }
+void AShipPawn::OnBuildPlace()
+{
+	if (bShowMap && MapActor())
+	{
+		// "load stars here": refocus the field on the selected star
+		UGalaxySubsystem* Galaxy = GetGameInstance()->GetSubsystem<UGalaxySubsystem>();
+		FStarDescriptor S;
+		if (Galaxy && !MapSelectedId.IsEmpty() && Galaxy->GetStar(MapSelectedId, S)) { MapActor()->SetFocus(S); MapActor()->CenterOn(S.Pos); Msg(FString::Printf(TEXT("Map centred on %s"), *S.Name)); }
+		return;
+	}
+	if (Mode == EFlightMode::Docked) { MenuAction(0); return; } if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode())) GM->BuildPlace(); }
 void AShipPawn::OnMenuEnter() { MenuAction(0); }
 void AShipPawn::OnBuildRotL() { if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode())) GM->BuildRotate(-1); }
 void AShipPawn::OnBuildRotR() { if (AOmniGameMode* GM = Cast<AOmniGameMode>(GetWorld()->GetAuthGameMode())) GM->BuildRotate(1); }

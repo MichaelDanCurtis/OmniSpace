@@ -6,6 +6,8 @@
 #include "Core/CommanderSubsystem.h"
 #include "World/SurfaceTile.h"
 #include "World/OutpostActor.h"
+#include "World/GalaxyMapActor.h"
+#include "Camera/CameraComponent.h"
 #include "JsonObjectConverter.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
@@ -54,6 +56,8 @@ void AOmniGameMode::BeginPlay()
 	}
 	FActorSpawnParameters P;
 	Director = World->SpawnActor<ASystemDirector>(ASystemDirector::StaticClass(), FTransform::Identity, P);
+	// the galaxy map lives 30 km below the play space, out of everything's way
+	MapActor = World->SpawnActor<AGalaxyMapActor>(AGalaxyMapActor::StaticClass(), FTransform(FVector(0, 0, -3.0e6)), P);
 	if (AShipPawn* Ship = Cast<AShipPawn>(UGameplayStatics::GetPlayerPawn(World, 0))) Ship->AttachDirector(Director);
 
 	UGameInstance* GI = GetGameInstance();
@@ -501,4 +505,23 @@ double AOmniGameMode::DeliverMaterials(const FVector& ShipPosCm)
 	}
 	if (Moved > 0) { SaveOutposts(); Cmdr->Save(); }
 	return Moved;
+}
+
+// ---------------------------------------------------------------- galaxy map
+void AOmniGameMode::OpenGalaxyMap()
+{
+	APlayerController* PC = UGameplayStatics::GetPlayerController(GetWorld(), 0);
+	if (!MapActor || !PC) return;
+	MapActor->Open(CurrentStar);
+	if (Director) { Director->SetSystemHidden(true); Director->SetSkyHidden(true); }
+	PC->SetViewTargetWithBlend(MapActor, 0.25f);
+}
+
+void AOmniGameMode::CloseGalaxyMap()
+{
+	APlayerController* PC = UGameplayStatics::GetPlayerController(GetWorld(), 0);
+	if (!MapActor || !PC) return;
+	MapActor->Close();
+	if (Director) { Director->SetSystemHidden(Tile != nullptr); Director->SetSkyHidden(false); }
+	if (APawn* Pawn = PC->GetPawn()) PC->SetViewTargetWithBlend(Pawn, 0.25f);
 }

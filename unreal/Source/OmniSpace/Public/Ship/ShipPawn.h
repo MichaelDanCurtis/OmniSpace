@@ -87,8 +87,12 @@ public:
 	void SetMapOpen(bool bGalaxy, bool bSystem);
 	void MapSelectHovered();
 	void OnToggleSystemMap() { SetMapOpen(false, !bShowSystemMap); }
-	void OnMapZoomIn() { if (bShowMap) MapRangeLy = FMath::Max(10.0, MapRangeLy * 0.8); }
-	void OnMapZoomOut() { if (bShowMap) MapRangeLy = FMath::Min(120.0, MapRangeLy * 1.25); }
+	void OnMapZoomIn();
+	void OnMapZoomOut();
+	void OnMouseRelease();
+	bool bMapDrag = false;
+	double MapDragMoved = 0;
+	class AGalaxyMapActor* MapActor() const;
 	UPROPERTY(BlueprintReadOnly, Category = "Ship") double LastImpactTime = -100;
 	UPROPERTY() TObjectPtr<class UShipAudio> Audio;
 	/** Landing tile we are flying over (set by the game mode while on the surface). */
@@ -174,6 +178,7 @@ protected:
 	void OnBoostReleased() { bBoostHeld = false; }
 	void OnFullStop();
 	void OnCruiseThrottle();
+	void OnMapGalaxyView();
 	void OnToggleFA();
 	void OnToggleSupercruise() { ToggleSupercruise(); }
 	void OnDock();

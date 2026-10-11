@@ -17,6 +17,7 @@ private:
 	void DrawBuildPanel(class AOmniGameMode* GM, class UFont* Font, float W, float H, float U);
 	void DrawStationMenu(class AShipPawn* Ship, class UFont* Font, float W, float H, float U);
 	void DrawSystemMap(class AShipPawn* Ship, class UFont* Font, float W, float H, float U);
+	void DrawGalaxyMap3D(class AShipPawn* Ship, class AOmniGameMode* GM, class UFont* Font, float W, float H, float U);
 	void Bracket(float X, float Y, float S, const FLinearColor& C, float Thick);
 	void Diamond(float X, float Y, float S, const FLinearColor& C, float Thick);
 	void Circle(float X, float Y, float R, const FLinearColor& C, int32 Segs, float Thick, float Squash = 1.f);

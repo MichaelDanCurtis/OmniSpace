@@ -615,6 +615,41 @@ def build_emissive(mat):
     MEL.connect_material_property(color, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
 
 
+def build_mapstar(mat):
+    """Galaxy-map star: unlit sphere coloured per instance (custom data 0-2 = colour, 3 = luminosity)."""
+    pid = []
+    for i in range(4):
+        n = MEL.create_material_expression(mat, unreal.MaterialExpressionPerInstanceCustomData, -700, i * 150)
+        n.set_editor_property("data_index", i)
+        pid.append(n)
+    cam = MEL.create_material_expression(mat, unreal.MaterialExpressionCameraVectorWS, -700, 700)
+    nrm = MEL.create_material_expression(mat, unreal.MaterialExpressionVertexNormalWS, -700, 850)
+    code = """
+float3 col = float3(R, G, B);
+float lum = saturate(Lum);
+// a bright core with a soft limb, so the sphere reads as a point of light rather than a ball
+float f = saturate(dot(normalize(N), normalize(V)));
+float core = pow(f, 1.6);
+return col * (1.5 + 4.5 * core) * (0.7 + 0.6 * lum);
+"""
+    node = custom(mat, code, ["R", "G", "B", "Lum", "V", "N"], -300, 0)
+    for n, nm in zip(pid, ("R", "G", "B", "Lum")):
+        MEL.connect_material_expressions(n, "", node, nm)
+    MEL.connect_material_expressions(cam, "", node, "V")
+    MEL.connect_material_expressions(nrm, "", node, "N")
+    mat.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_UNLIT)
+    MEL.connect_material_property(node, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
+
+
+def build_mapcloud(mat):
+    """Galaxy-map overview point: faint additive blue-white sprite."""
+    color = vec_param(mat, "Color", (0.45, 0.58, 0.85, 1), -500, 0)
+    mat.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_UNLIT)
+    mat.set_editor_property("blend_mode", unreal.BlendMode.BLEND_ADDITIVE)
+    mat.set_editor_property("two_sided", True)
+    MEL.connect_material_property(color, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
+
+
 def ensure_audio():
     """Import the generated WAVs in RawAudio/ as SoundWaves under /Game/Audio (loops flagged)."""
     import glob
@@ -671,6 +706,8 @@ ensure_material("M_Tunnel", build_tunnel)
 ensure_material("M_Flash", build_flash)
 ensure_material("M_Terrain", build_terrain)
 ensure_material("M_Water", build_water)
+ensure_material("M_MapStar", build_mapstar)
+ensure_material("M_MapCloud", build_mapcloud)
 ensure_map()
 ensure_audio()
 log("done")

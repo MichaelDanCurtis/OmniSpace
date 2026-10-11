@@ -66,6 +66,11 @@ public:
 	/** Jump failed: put the ship back in the system it left. */
 	void AbortJump();
 
+	// ---- the 3D galaxy map
+	UPROPERTY() TObjectPtr<class AGalaxyMapActor> MapActor;
+	void OpenGalaxyMap();
+	void CloseGalaxyMap();
+
 	// ---- outposts: prefab modules on the landing tile, built by delivering materials
 	UPROPERTY() TArray<FOutpostData> Outposts;              // every outpost the commander has founded
 	UPROPERTY() TObjectPtr<class AOutpostActor> OutpostActor; // the one on the current tile, if any

@@ -233,6 +233,11 @@ void ASystemDirector::SetSkyWarp(float Warp, const FVector& Dir, const FVector& 
 	if (Sky) Sky->SetWarp(Warp, Dir, Up, Flow);
 }
 
+void ASystemDirector::SetSkyHidden(bool bHidden)
+{
+	if (Sky) Sky->SetActorHiddenInGame(bHidden);
+}
+
 void ASystemDirector::SetSystemHidden(bool bHidden)
 {
 	for (FUniverseEntity& E : Entities) if (E.Actor) E.Actor->SetActorHiddenInGame(bHidden);
