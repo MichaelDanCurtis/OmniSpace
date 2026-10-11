@@ -103,7 +103,7 @@ void AGalaxyMapActor::BuildCloud()
 		const double D = omni::galaxy::density(X, Y, Z);
 		if (Rng.next() * Max * 0.35 > D) continue;
 		// galactic coordinates are absolute; MapPos wants ly relative to the focus
-		Xf.Add(FTransform(FQuat::Identity, MapPos(FVector(X, Y, Z)), FVector(1.8, 1.8, 1.0)));
+		Xf.Add(FTransform(FQuat::Identity, MapPos(FVector(X, Y, Z)), FVector(260.0, 260.0, 1.0))); // ~2.6 ly across: a couple of pixels from 90 000 ly up
 	}
 	Cloud->AddInstances(Xf, false, true);
 	Cloud->MarkRenderStateDirty();

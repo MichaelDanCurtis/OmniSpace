@@ -624,20 +624,23 @@ def build_mapstar(mat):
         pid.append(n)
     cam = MEL.create_material_expression(mat, unreal.MaterialExpressionCameraVectorWS, -700, 700)
     nrm = MEL.create_material_expression(mat, unreal.MaterialExpressionVertexNormalWS, -700, 850)
-    depth = MEL.create_material_expression(mat, unreal.MaterialExpressionPixelDepth, -700, 1000)
+    wpos = MEL.create_material_expression(mat, unreal.MaterialExpressionWorldPosition, -700, 1000)
+    cpos = MEL.create_material_expression(mat, unreal.MaterialExpressionCameraPositionWS, -700, 1150)
     code = """
 float3 col = float3(R, G, B);
 float lum = saturate(Lum);
 float f = saturate(dot(normalize(N), normalize(V)));
 // additive: the limb fades to nothing, the centre burns; colour survives because the core
-// is not pushed far past white. Stars right next to the camera fade out instead of filling
-// the screen with a dim disc.
-float core = pow(f, 2.4);
-float nearFade = smoothstep(250.0, 1800.0, Depth);
+// is not pushed far past white. Stars within a few metres of the camera fade out instead of
+// filling the screen with a dim disc.
+float core = pow(f, 3.0);
+float d = distance(WP, CP);
+float nearFade = smoothstep(300.0, 2500.0, d);
 return col * core * (1.1 + 1.0 * lum) * nearFade;
 """
-    node = custom(mat, code, ["R", "G", "B", "Lum", "V", "N", "Depth"], -300, 0)
-    MEL.connect_material_expressions(depth, "", node, "Depth")
+    node = custom(mat, code, ["R", "G", "B", "Lum", "V", "N", "WP", "CP"], -300, 0)
+    MEL.connect_material_expressions(wpos, "", node, "WP")
+    MEL.connect_material_expressions(cpos, "", node, "CP")
     for n, nm in zip(pid, ("R", "G", "B", "Lum")):
         MEL.connect_material_expressions(n, "", node, nm)
     MEL.connect_material_expressions(cam, "", node, "V")
