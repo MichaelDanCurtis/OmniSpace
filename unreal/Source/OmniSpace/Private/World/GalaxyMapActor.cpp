@@ -28,6 +28,16 @@ AGalaxyMapActor::AGalaxyMapActor()
 	Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("MapCamera"));
 	Camera->SetupAttachment(Root);
 	Camera->FieldOfView = 55.f;
+	// same pinned exposure as the cockpit camera, no lens flares (their bokeh ghosts read as
+	// phantom stars), gentle bloom
+	FPostProcessSettings& PP = Camera->PostProcessSettings;
+	PP.bOverride_AutoExposureMinBrightness = true; PP.AutoExposureMinBrightness = 1.0f;
+	PP.bOverride_AutoExposureMaxBrightness = true; PP.AutoExposureMaxBrightness = 1.0f;
+	PP.bOverride_AutoExposureBias = true; PP.AutoExposureBias = 0.0f;
+	PP.bOverride_LensFlareIntensity = true; PP.LensFlareIntensity = 0.0f;
+	PP.bOverride_BloomIntensity = true; PP.BloomIntensity = 0.35f;
+	PP.bOverride_BloomThreshold = true; PP.BloomThreshold = 0.8f;
+	PP.bOverride_VignetteIntensity = true; PP.VignetteIntensity = 0.0f;
 	Stars = CreateDefaultSubobject<UInstancedStaticMeshComponent>(TEXT("Stars"));
 	Stars->SetupAttachment(Root);
 	Stars->SetCollisionEnabled(ECollisionEnabled::NoCollision);
