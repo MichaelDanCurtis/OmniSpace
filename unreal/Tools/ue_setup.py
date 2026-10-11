@@ -638,6 +638,7 @@ return col * (1.5 + 4.5 * core) * (0.7 + 0.6 * lum);
     MEL.connect_material_expressions(cam, "", node, "V")
     MEL.connect_material_expressions(nrm, "", node, "N")
     mat.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_UNLIT)
+    mat.set_editor_property("used_with_instanced_static_meshes", True)
     MEL.connect_material_property(node, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
 
 
@@ -647,6 +648,7 @@ def build_mapcloud(mat):
     mat.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_UNLIT)
     mat.set_editor_property("blend_mode", unreal.BlendMode.BLEND_ADDITIVE)
     mat.set_editor_property("two_sided", True)
+    mat.set_editor_property("used_with_instanced_static_meshes", True)
     MEL.connect_material_property(color, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
 
 
