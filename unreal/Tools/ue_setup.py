@@ -629,8 +629,10 @@ float3 col = float3(R, G, B);
 float lum = saturate(Lum);
 // a bright core with a soft limb, so the sphere reads as a point of light rather than a ball
 float f = saturate(dot(normalize(N), normalize(V)));
-float core = pow(f, 1.6);
-return col * (1.5 + 4.5 * core) * (0.7 + 0.6 * lum);
+// additive: the limb fades to nothing, the centre burns; colour survives because the core
+// is not pushed far past white
+float core = pow(f, 2.4);
+return col * core * (1.6 + 1.2 * lum);
 """
     node = custom(mat, code, ["R", "G", "B", "Lum", "V", "N"], -300, 0)
     for n, nm in zip(pid, ("R", "G", "B", "Lum")):
@@ -638,13 +640,14 @@ return col * (1.5 + 4.5 * core) * (0.7 + 0.6 * lum);
     MEL.connect_material_expressions(cam, "", node, "V")
     MEL.connect_material_expressions(nrm, "", node, "N")
     mat.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_UNLIT)
+    mat.set_editor_property("blend_mode", unreal.BlendMode.BLEND_ADDITIVE)
     mat.set_editor_property("used_with_instanced_static_meshes", True)
     MEL.connect_material_property(node, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
 
 
 def build_mapcloud(mat):
     """Galaxy-map overview point: faint additive blue-white sprite."""
-    color = vec_param(mat, "Color", (0.45, 0.58, 0.85, 1), -500, 0)
+    color = vec_param(mat, "Color", (0.18, 0.24, 0.38, 1), -500, 0)
     mat.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_UNLIT)
     mat.set_editor_property("blend_mode", unreal.BlendMode.BLEND_ADDITIVE)
     mat.set_editor_property("two_sided", True)
