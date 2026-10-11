@@ -635,12 +635,24 @@ float f = saturate(dot(normalize(N), normalize(V)));
 // filling the screen with a dim disc.
 float core = pow(f, 3.0);
 float d = distance(WP, CP);
-float nearFade = smoothstep(300.0, 2500.0, d);
+float nearFade = smoothstep(60.0, 400.0, d);
 return col * core * (1.1 + 1.0 * lum) * nearFade;
 """
     node = custom(mat, code, ["R", "G", "B", "Lum", "V", "N", "WP", "CP"], -300, 0)
     MEL.connect_material_expressions(wpos, "", node, "WP")
     MEL.connect_material_expressions(cpos, "", node, "CP")
+    # vertex shader: a star closer than 40 m shrinks with distance so it keeps a point's apparent
+    # size instead of swelling into a disc as the camera passes it (the web map's fixed-size points)
+    opos = MEL.create_material_expression(mat, unreal.MaterialExpressionObjectPositionWS, -700, 1300)
+    wpo = custom(mat, """
+float d = distance(OP, CP);
+float s = clamp(d / 4000.0, 0.02, 1.0);
+return (OP - WP) * (1.0 - s);
+""", ["WP", "OP", "CP"], -300, 500)
+    MEL.connect_material_expressions(wpos, "", wpo, "WP")
+    MEL.connect_material_expressions(opos, "", wpo, "OP")
+    MEL.connect_material_expressions(cpos, "", wpo, "CP")
+    MEL.connect_material_property(wpo, "", unreal.MaterialProperty.MP_WORLD_POSITION_OFFSET)
     for n, nm in zip(pid, ("R", "G", "B", "Lum")):
         MEL.connect_material_expressions(n, "", node, nm)
     MEL.connect_material_expressions(cam, "", node, "V")
@@ -653,7 +665,7 @@ return col * core * (1.1 + 1.0 * lum) * nearFade;
 
 def build_mapcloud(mat):
     """Galaxy-map overview point: faint additive blue-white sprite."""
-    color = vec_param(mat, "Color", (0.18, 0.24, 0.38, 1), -500, 0)
+    color = vec_param(mat, "Color", (0.05, 0.07, 0.12, 1), -500, 0)
     mat.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_UNLIT)
     mat.set_editor_property("blend_mode", unreal.BlendMode.BLEND_ADDITIVE)
     mat.set_editor_property("two_sided", True)

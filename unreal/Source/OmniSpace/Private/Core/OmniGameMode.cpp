@@ -56,8 +56,8 @@ void AOmniGameMode::BeginPlay()
 	}
 	FActorSpawnParameters P;
 	Director = World->SpawnActor<ASystemDirector>(ASystemDirector::StaticClass(), FTransform::Identity, P);
-	// the galaxy map lives 30 km below the play space, out of everything's way
-	MapActor = World->SpawnActor<AGalaxyMapActor>(AGalaxyMapActor::StaticClass(), FTransform(FVector(0, 0, -3.0e6)), P);
+	// the galaxy map lives 500 km below the play space, out of everything's way (and its lens flares)
+	MapActor = World->SpawnActor<AGalaxyMapActor>(AGalaxyMapActor::StaticClass(), FTransform(FVector(0, 0, -5.0e7)), P);
 	if (AShipPawn* Ship = Cast<AShipPawn>(UGameplayStatics::GetPlayerPawn(World, 0))) Ship->AttachDirector(Director);
 
 	UGameInstance* GI = GetGameInstance();

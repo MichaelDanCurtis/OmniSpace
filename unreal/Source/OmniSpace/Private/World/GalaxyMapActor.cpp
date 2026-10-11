@@ -103,7 +103,7 @@ void AGalaxyMapActor::BuildCloud()
 		const double D = omni::galaxy::density(X, Y, Z);
 		if (Rng.next() * Max * 0.35 > D) continue;
 		// galactic coordinates are absolute; MapPos wants ly relative to the focus
-		Xf.Add(FTransform(FQuat::Identity, MapPos(FVector(X, Y, Z)), FVector(260.0, 260.0, 1.0))); // ~2.6 ly across: a couple of pixels from 90 000 ly up
+		Xf.Add(FTransform(FQuat::Identity, MapPos(FVector(X, Y, Z)), FVector(140.0, 140.0, 1.0))); // ~1.4 ly across: about a pixel from 160 000 ly up
 	}
 	Cloud->AddInstances(Xf, false, true);
 	Cloud->MarkRenderStateDirty();
@@ -145,7 +145,7 @@ void AGalaxyMapActor::Orbit(double DYawDeg, double DPitchDeg)
 void AGalaxyMapActor::Zoom(double Factor)
 {
 	const double Lo = bGalaxyView ? 2000 * LyToCm : 4 * LyToCm;
-	const double Hi = bGalaxyView ? 200000 * LyToCm : 400 * LyToCm;
+	const double Hi = bGalaxyView ? 260000 * LyToCm : 400 * LyToCm;
 	WantDist = FMath::Clamp(WantDist * Factor, Lo, Hi);
 }
 
@@ -158,7 +158,7 @@ void AGalaxyMapActor::SetGalaxyView(bool bOn)
 	{
 		// pull back to see the whole disc, centred on the galaxy's core
 		WantTargetLy = FVector(0, 0, 0);
-		WantDist = 90000 * LyToCm; WantPitch = -62; WantYaw = -90;
+		WantDist = 160000 * LyToCm; WantPitch = -62; WantYaw = -90;
 	}
 	else
 	{
