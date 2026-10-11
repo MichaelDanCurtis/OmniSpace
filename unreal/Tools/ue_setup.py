@@ -636,7 +636,7 @@ float f = saturate(dot(normalize(N), normalize(V)));
 float core = pow(f, 3.0);
 float d = distance(WP, CP);
 float nearFade = smoothstep(60.0, 400.0, d);
-return col * core * (1.1 + 1.0 * lum) * nearFade;
+return col * core * (1.5 + 1.2 * lum) * nearFade;
 """
     node = custom(mat, code, ["R", "G", "B", "Lum", "V", "N", "WP", "CP"], -300, 0)
     MEL.connect_material_expressions(wpos, "", node, "WP")

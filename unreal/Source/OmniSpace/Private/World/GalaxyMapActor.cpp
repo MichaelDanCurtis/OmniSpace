@@ -75,7 +75,7 @@ void AGalaxyMapActor::SetFocus(const FStarDescriptor& Focus)
 	Xf.Reserve(LocalStars.Num());
 	for (const FStarDescriptor& S : LocalStars)
 	{
-		const double Sz = MapStarSize(S.Cls) * 0.075; // sphere mesh is 1 m across
+		const double Sz = MapStarSize(S.Cls) * 0.1; // sphere mesh is 1 m across
 		Xf.Add(FTransform(FQuat::Identity, MapPos(S.Pos), FVector(Sz)));
 	}
 	Stars->AddInstances(Xf, false, true);
